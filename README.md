@@ -3,7 +3,7 @@
 Original: Kevin Bryan (July 2025)  
 Port/maintainer: Stephan Lauermann  
 
-ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline GPT-assisted editing. It runs grammar, style, simplification, and proof checks; it can also run Python to check math and search the web when enabled. You can accept/reject/edit each suggestion, and you can work fully offline by importing precomputed JSON corrections.
+ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline GPT-assisted editing using the OpenAI GPT family. It runs grammar, style, simplification, and proof checks; it can also run Python to check math and search the web when enabled. You can accept/reject/edit each suggestion, and you can work fully offline by importing precomputed JSON corrections.
 
 ---
 
@@ -35,10 +35,11 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 ---
 
 ## JSON contracts (for imports or running models elsewhere)
-- Corrections schema (grammar/style/custom): one object with a `corrections` array of `{ original, corrected, explanation, type }`. Types: `grammar`, `style`, or `comment`. Empty = `{"corrections":[]}`.  
+- Corrections schema (grammar/style/custom): one object with a `corrections` array of `{ original, corrected, explanation, type }`. Types: `grammar`, `style`, or `comment`. Empty = `{"corrections":[]}`. For `type: "comment"`, the editor will never change the text; the item is just a note, so set `corrected` equal to `original`.  
 - Simplify: `{ same_length, moderate, concise }` strings.  
 - Proof: `{ is_valid, issues[], questions[], suggestions[], overall }`.  
 - Custom Ask: `{ comment, suggestions[] }`.
+- Gemini support: model selector includes Gemini 2.5 Flash/Pro. Same JSON schemas apply; tools (web/code) remain OpenAI-only.
 
 ---
 
