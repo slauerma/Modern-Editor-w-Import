@@ -1,5 +1,7 @@
 # ModernEditor (OpenAI GPT-5 port, MIT)
 
+![ModernEditor screenshot](./shot.jpg)
+
 Original: Kevin Bryan (July 2025)  
 Port/maintainer: Stephan Lauermann  
 
