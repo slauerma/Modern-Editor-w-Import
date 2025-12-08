@@ -3,7 +3,7 @@
 Original: Kevin Bryan (July 2025)  
 Port/maintainer: Stephan Lauermann  
 
-ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline GPT-assisted editing using the OpenAI GPT family. It runs grammar, style, simplification, and proof checks; it can also run Python to check math and search the web when enabled. You can accept/reject/edit each suggestion, and you can work fully offline by importing precomputed JSON corrections.
+ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline GPT-assisted editing using the OpenAI GPT family and Gemini. It runs grammar, style, simplification, and proof checks; it can also run Python to check math and search the web when enabled under GPT. You can accept/reject/edit each suggestion, and you can work fully offline by importing precomputed JSON corrections.
 
 ---
 
@@ -31,6 +31,7 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 - Models/tools: GPT-5.1 (thinking variants), GPT-5-pro, GPT-4.1-mini. GPT-5.1 can optionally enable web search and Python (default off). Token/cost info is shown in the menu’s run log (and also logged to the console).  
 - Import/offline: Structured JSON corrections; Unstructured Comments → structured corrections; built-in Example to demo without API calls.  
 - Diff/session: baseline tracking; Global Diff modal + download; autosave/session restore (also manual save/load `.json`).
+- Models: OpenAI (GPT-5.1 families, GPT-5-pro, GPT-4.1-mini) and Gemini (2.5 Flash/Pro) share the same JSON schemas; tools (web/code) are OpenAI-only.
 
 ---
 
@@ -45,7 +46,9 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 
 ## Key handling
 - Default path: enter key in the modal (session-only).  
-- Preload: set `window.OPENAI_API_KEY` in `keys.js` if you choose; external key loading is otherwise off by default.  
+- OpenAI: set `window.OPENAI_API_KEY` or use `OPENAI_KEY_PATHS` for trusted local scripts.  
+- Gemini: set `window.GEMINI_API_KEY` or use `GEMINI_KEY_PATHS` for trusted local scripts.  
+- Manage: status bar/menu “Manage keys” handles both providers.  
 - Offline: no key needed when importing JSON.
 
 ---
@@ -59,4 +62,5 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 ## Troubleshooting
 - “API key is missing”: modal will reappear; enter key or switch to offline import.  
 - Diff: baseline is the first loaded/run document; view/download via Global Diff.  
+- Gemini structured output rejected: simplify the schema (reduce nesting) and ensure your Gemini key is set; the app uses `responseJsonSchema` with the same schema as OpenAI.
 - See token/cost logs in the menu’s run log or the browser console.
