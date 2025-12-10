@@ -1630,19 +1630,21 @@ const SAMPLE_COMMENTS_FALLBACK = {
     }
   ]
 };
-const LOADING_TIPS = Array.isArray(window.CUSTOM_LOADING_TIPS) && window.CUSTOM_LOADING_TIPS.length
-  ? window.CUSTOM_LOADING_TIPS
-  : [
-    'We only send your selection for Custom Ask; the surrounding text is read-only context.',
-    'Grammar/Style runs strip the LaTeX preamble and map corrections back to the original positions.',
-    'You can import structured JSON corrections to work fully offline.',
-    'Use Undo after accepting/rejecting to restore the prior state and correction positions.',
-    'Keyboard shortcuts: arrows to navigate, Enter to accept, Delete/Backspace to reject.',
-    'Simplify works best on one–two paragraphs at a time; it returns three alternative rewrites with different lengths.',
-    'Proof check is intended for a single theorem and its proof; select both together before running it.',
-    'Custom / User Instructions let you define your own editing rule; you can set scope (selection vs full doc) and editing strength.',
-    'Use Import → Example to load a sample LaTeX document plus example corrections without calling the API.',
-    'You can paste JSON from ChatGPT into “Import Structured JSON” to visualize corrections without rerunning any model.',
+  const LOADING_TIPS = Array.isArray(window.CUSTOM_LOADING_TIPS) && window.CUSTOM_LOADING_TIPS.length
+    ? window.CUSTOM_LOADING_TIPS
+    : [
+      'We only send your selection for Custom Ask; the surrounding text is read-only context.',
+      'Grammar/Style runs strip the LaTeX preamble and map corrections back to the original positions.',
+      'Thinking models (esp. Custom) can run for several minutes, especially on long documents you may need to wait 10 or even 15 minutes.',
+      'You can import structured JSON corrections to work fully offline.',
+      'Use Undo after accepting/rejecting to restore the prior state and correction positions.',
+      'Keyboard shortcuts: arrows to navigate, Enter to accept, Delete/Backspace to reject.',
+      'GPT-5-pro can get very expensive fast on long papers or with Python; watch token logs in the console.',
+      'Simplify works best on one–two paragraphs at a time; it returns three alternative rewrites with different lengths.',
+      'Proof check is intended for a single theorem and its proof; select both together before running it. You can also check proofs with custom asks',
+      'Custom / User Instructions let you define your own editing rule; you can set scope (selection vs full doc) and editing strength.',
+      'Use Import → Example to load a sample LaTeX document plus example corrections without calling the API.',
+      'You can paste JSON from ChatGPT into “Import Structured JSON” to visualize corrections without rerunning any model.',
     'Free-form reviewer comments can be pasted into “Import Comments” and turned into structured, clickable edits.',
     'The editor locks during a correction run; use Undo to restore the prior state and the full correction list.',
     'Model choice in the menu trades off quality and cost; open the browser console to see token usage and estimated price per run.',
@@ -3535,9 +3537,9 @@ async function handleAnalysis() {
       
     }
 
-    // Map corrections to positions in the original document using stable mapping
-    const { mappedCorrections, unmatchedCorrections } = mapCorrectionsStably(allCorrections, analysisText, selectionOffset);
-    corrections = mappedCorrections;
+    // Map corrections to positions in the original document using sequential mapping
+    const { mapped, unmatched } = mapCorrectionsToPositions(allCorrections, analysisText, selectionOffset);
+    corrections = mapped;
 
   if (corrections.length > 0) {
     documentInput.readOnly = true;        // Prevent typing
@@ -3550,8 +3552,8 @@ async function handleAnalysis() {
         documentInput.readOnly = false;
         documentInput.classList.remove('locked');
         highlightOverlay.innerHTML = escapeHtml(currentText) + `<div class="empty-state"><h3>No suggestions found</h3><p>Your document looks great!</p></div>`;
-    if (unmatchedCorrections.length) {
-      alert(`Loaded ${mappedCorrections.length} corrections. ${unmatchedCorrections.length} could not be placed.`);
+    if (unmatched.length) {
+      alert(`Loaded ${mapped.length} corrections. ${unmatched.length} could not be placed. They might not match the document exactly.`);
     }
     }
     scheduleSessionSave();
@@ -4008,7 +4010,22 @@ function handleJsonImport() {
     }
   }
 
-  if (!parsed || !Array.isArray(parsed.corrections)) {
+  let correctionsArray = Array.isArray(parsed?.corrections) ? parsed.corrections : null;
+  if (!correctionsArray) {
+    try {
+      // Try to unwrap a full API response (e.g., OpenAI/Gemini Responses API payload)
+      const extracted = extractStructuredJson(parsed);
+      if (Array.isArray(extracted?.corrections)) {
+        correctionsArray = extracted.corrections;
+      } else if (Array.isArray(extracted)) {
+        correctionsArray = extracted;
+      }
+    } catch (_) {
+      // ignore and fall through to error
+    }
+  }
+
+  if (!Array.isArray(correctionsArray)) {
     alert('JSON must contain a "corrections" array. If this import fails, try Unstructured Comments, or regenerate JSON via a two-step prompt: first a table (original, comment, correction), then convert the table to the JSON shape.');
     return;
   }
@@ -4019,12 +4036,17 @@ function handleJsonImport() {
     return;
   }
 
+  // If no baseline is set yet, set it to the current text so Global Diff works
+  if (!originalDocumentText) {
+    originalDocumentText = fullText;
+  }
+
   resetState();
 
   const latex = extractLatexContent(fullText);
   const analysisText = latex.text;
   const baseOffset = latex.offset || 0;
-  const { mapped, unmatched } = mapCorrectionsToPositions(parsed.corrections, analysisText, baseOffset);
+  const { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset);
 
   if (!mapped.length) {
     alert('No corrections could be mapped to this document.');
@@ -4330,6 +4352,7 @@ function acceptCorrection(index) {
       textBefore: documentInput.value
     });
     corrections.splice(index, 1);
+    updateHighlightOverlay();
     if (corrections.length === 0) {
       resetState();
     } else {
@@ -4439,7 +4462,12 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0) {
 
     let foundAtIndex = text.indexOf(safe.original, searchFromIndex);
     if (foundAtIndex === -1) {
-      foundAtIndex = findApproxMatch(text, safe.original, searchFromIndex, 2, 4000);
+      // First try a nearby fuzzy match (small window)
+      foundAtIndex = findApproxMatch(text, safe.original, searchFromIndex, 2, 2000);
+    }
+    if (foundAtIndex === -1) {
+      // As a last resort, search the whole text with the same tolerance
+      foundAtIndex = findApproxMatch(text, safe.original, 0, 2, 8000);
     }
 
     if (foundAtIndex !== -1) {
@@ -4460,6 +4488,9 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0) {
   if (unmatched.length) {
     console.warn('Unmatched corrections (showing up to 3):', unmatched.slice(0, 3).map(item => item.original || item));
   }
+
+  // Sort by start position to keep rendering consistent even if model output is unordered
+  mapped.sort((a, b) => a.position.start - b.position.start);
 
   return { mapped, unmatched };
 }

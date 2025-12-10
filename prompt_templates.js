@@ -61,7 +61,8 @@ ${text}
 ${contextBlock}
 `;
     } else {
-      const styleInstructions = 'Do not check grammar or spelling.';
+      const styleInstructions = `Do not check grammar or spelling.
+If you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).`;
 
       return `${rule.prompt} ${languageInstruction} It is ${currentDate}.
 
