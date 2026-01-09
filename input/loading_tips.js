@@ -1,7 +1,7 @@
 // Customizable loading tips used by the overlay. Edit this file to change tips without touching index.html.
 window.CUSTOM_LOADING_TIPS = [
   'We only send your selection for Custom Ask; the surrounding text is read-only context.',
-  'Grammar/Style runs strip the LaTeX preamble and map corrections back to the original positions.',
+  'Grammar/Style runs include the full LaTeX document (preamble included) and map corrections to the original positions.',
   'You can import structured JSON corrections to work fully offline.',
   'Use Undo after accepting/rejecting to restore the prior state and correction positions.',
   'Keyboard shortcuts: arrows to navigate, Enter to accept, Delete/Backspace to reject.',
@@ -13,6 +13,6 @@ window.CUSTOM_LOADING_TIPS = [
   'Free-form reviewer comments can be pasted into “Import Comments” and turned into structured, clickable edits.',
   'The editor locks during a correction run; use Undo to restore the prior state and the full correction list.',
   'Model choice in the menu trades off quality and cost; open the browser console to see token usage and estimated price per run.',
-  'LaTeX .tex files are supported: the preamble is stripped for analysis and corrections are mapped back to the original source.',
+  'LaTeX .tex files are supported: the preamble is included for analysis and corrections map back to the original source.',
   'Session snapshots are stored locally; you can also save or load a full session as a .json file from the menu.'
 ];

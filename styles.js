@@ -1,3 +1,5 @@
+window.WRITING_RULES = window.WRITING_RULES || {};
+
 /* 
 // Add your own style here if you like
 window.WRITING_RULES['user_style_1'] = { name: 'USER CREATED STYLE', prompt: `

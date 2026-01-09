@@ -1,10 +1,4 @@
-(function () {
-  function normalizeInput(value, shouldTrim = true) {
-    if (typeof value !== 'string') return '';
-    return shouldTrim ? value.trim() : value;
-  }
-
-  const DEEP_AUDIT_PROMPT_FALLBACK = `You are a mathematically sophisticated referee in mathematical economics.
+You are a mathematically sophisticated referee in mathematical economics.
 
 TARGET TO AUDIT (provided in a separate message)
 
@@ -72,11 +66,11 @@ For each step:
 
 2. Classify the step
    Mark it as one of:
-   - \`Verified (fully justified)\`
-   - \`Correct but needs an explicit justification\`
-   - \`Incorrect as stated\`
-   - \`Depends on missing/unclear assumptions\`
-   - \`Possibly OCR/parsing artifact\` (see section E below)
+   - `Verified (fully justified)`
+   - `Correct but needs an explicit justification`
+   - `Incorrect as stated`
+   - `Depends on missing/unclear assumptions`
+   - `Possibly OCR/parsing artifact` (see section E below)
 
 3. Re‑derive and justify
    - Reproduce the derivation or logical implication in your own words,
@@ -173,7 +167,7 @@ Be explicitly alert to parsing/OCR problems and to model‑side hallucinations.
    OCR/parsing artifact, not as an author error.
 
 2. When you suspect such an issue:
-   - Mark the step as \`Possibly OCR/parsing artifact\`.
+   - Mark the step as `Possibly OCR/parsing artifact`.
    - Describe what is inconsistent and propose the **minimal correction**
      that makes the surrounding argument coherent (e.g. “likely missing exponent”,
      “subscript probably i not j”, “probable typo: F vs. G”).
@@ -199,8 +193,8 @@ improves clarity, but all components below must be present):
    For each step in order:
    - Step label
    - Statement (equation/claim)
-   - Status (\`Verified\`, \`Needs justification\`, \`Incorrect\`, \`Depends on missing assumptions\`,
-     or \`Possibly OCR/parsing artifact\`)
+   - Status (`Verified`, `Needs justification`, `Incorrect`, `Depends on missing assumptions`,
+     or `Possibly OCR/parsing artifact`)
    - Your derivation/justification or explanation of the issue
 
 3. Summary of issues
@@ -209,8 +203,8 @@ improves clarity, but all components below must be present):
      notation problems, mildly unclear exposition).
    - For each major issue, state:
        • exactly where it appears,
-       • why it is potentially problematic,
-       • your level of confidence (high, medium, low)
+       • why it is potentially problematic, 
+	• your level of confidence (high, medium, low)
        • whether it threatens the validity of the Target as stated.
 
 4. Optional brief appendix (only if needed)
@@ -231,133 +225,3 @@ Do not shortcut reasoning. Treat this as a deep technical referee task:
 - Use as much explicit derivation and computation as necessary.
 - Err on the side of **over‑explaining** intermediate steps and conditions rather
   than skipping them, while keeping the restatement itself concise.
-`;
-
-  if (typeof window.DEEP_AUDIT_PROMPT_FALLBACK !== 'string' || !window.DEEP_AUDIT_PROMPT_FALLBACK.trim()) {
-    window.DEEP_AUDIT_PROMPT_FALLBACK = DEEP_AUDIT_PROMPT_FALLBACK;
-  }
-
-  window.generateCommentsImportPrompt = function generateCommentsImportPrompt({
-    documentText = '',
-    commentsText = '',
-    languageInstruction = ''
-  } = {}) {
-    const doc = normalizeInput(documentText, false);
-    const comments = normalizeInput(commentsText);
-    const instruction = typeof languageInstruction === 'string' ? languageInstruction : '';
-    const today = new Date().toISOString().split('T')[0];
-
-    return `${instruction}You are an elite academic copy editor on ${today}. Your task: read the author's document and the free-form reviewer comments, then translate those comments into precise, structured edits that anchor to exact spans of the document. Think of this as “turn reviewer notes into clickable, localized corrections.”
-
-Requirements:
-- Use the exact text from the document inside each "original" field; it MUST match a span in the document.
-- Provide the corrected wording in "corrected". When the comment simply praises or requests no change, keep "corrected" identical to "original" and begin the explanation with "No change comment:" followed by the reviewer note. Entries with type "comment" are treated as notes only.
-- Keep LaTeX commands, equations, and formatting intact—do not suggest edits to LaTeX syntax.
-- Split broad comments into multiple targeted corrections when necessary so each entry maps to a specific span.
-- Every entry must set "type" to "grammar" or "comment" (use "comment" for no-change notes).
-- If no actionable edits exist, return a JSON object with an empty "corrections" array: {"corrections": []}.
-- Output MUST be valid JSON and escape backslashes (e.g., \\\\cite).
-
-Return ONLY a JSON object:
-{
-  "corrections": [
-    { "original": "...", "corrected": "...", "explanation": "...", "type": "grammar" }
-  ]
-}
-
-Document to anchor the corrections:
-\`\`\`
-${doc}
-\`\`\`
-
-Reviewer comments to translate:
-\`\`\`
-${comments}
-\`\`\``;
-  };
-
-  window.generateDeepAuditReportMessages = function generateDeepAuditReportMessages({
-    promptText = '',
-    targetText = '',
-    manuscriptText = ''
-  } = {}) {
-    const prompt = normalizeInput(promptText, false);
-    const target = normalizeInput(targetText);
-    const manuscript = normalizeInput(manuscriptText, false);
-
-    return [
-      {
-        role: 'user',
-        content: `Message 1/3: Deep audit instructions.\n${prompt}`
-      },
-      {
-        role: 'user',
-        content: `Message 2/3: TARGET TO AUDIT\n${target}`
-      },
-      {
-        role: 'user',
-        content: `Message 3/3: MANUSCRIPT\n${manuscript}`
-      }
-    ];
-  };
-
-  window.generateDeepAuditStructurerMessages = function generateDeepAuditStructurerMessages({
-    reportText = '',
-    manuscriptText = '',
-    languageInstruction = ''
-  } = {}) {
-    const report = normalizeInput(reportText, false);
-    const manuscript = normalizeInput(manuscriptText, false);
-    const instruction = typeof languageInstruction === 'string' ? languageInstruction : '';
-    const today = new Date().toISOString().split('T')[0];
-
-    const prompt = `${instruction}You are converting a deep audit report into structured, actionable suggestions anchored to exact text spans in a manuscript. Today is ${today}.
-
-OVERVIEW COMMENT (required):
-- The FIRST item in "corrections" MUST be a comment-only overview.
-- type = "comment" and corrected MUST equal original exactly.
-- explanation begins with "[Overview]" and gives 3-6 bullet points of the main issues.
-- Anchor it to a short quote from the target statement or the first sentence of the proof.
-
-COMMENT SCAFFOLDING (recommended):
-- Add several comment-only "issue header" items before clusters of edits.
-- explanation begins with "[Issue]" and names the issue and the fix location.
-- corrected MUST equal original exactly for these comments.
-- Use comment-only items for non-local or risky fixes instead of rewriting.
-
-ANCHOR UNIQUENESS:
-- Do not reuse the same "original" quote for multiple items.
-- If two items would anchor to the same sentence, expand one quote with adjacent words
-  until the quotes differ (must still be a contiguous exact substring).
-
-Requirements:
-- Output MUST be strict JSON with a top-level "corrections" array, and nothing else.
-- Each "original" must be an exact, contiguous substring of the manuscript text.
-- If you cannot find an exact substring for an item, drop it (do not output it).
-- Use type "comment" with corrected == original for high-level notes or warnings.
-- Keep LaTeX commands intact and escape backslashes (e.g., \\\\cite).
-- If no actionable items exist, return {"corrections": []}.
-
-Return ONLY:
-{
-  "corrections": [
-    { "original": "...", "corrected": "...", "explanation": "...", "type": "style" }
-  ]
-}`;
-
-    return [
-      {
-        role: 'user',
-        content: `Message 1/3: Structuring instructions.\n${prompt}`
-      },
-      {
-        role: 'user',
-        content: `Message 2/3: REPORT\n${report}`
-      },
-      {
-        role: 'user',
-        content: `Message 3/3: MANUSCRIPT\n${manuscript}`
-      }
-    ];
-  };
-})();

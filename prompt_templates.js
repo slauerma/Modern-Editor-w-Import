@@ -13,6 +13,123 @@
     return '';
   }
 
+  const JSON_STRICTNESS_LINE = 'IMPORTANT: The output MUST be a valid JSON object. All backslashes \\\\ in the text, such as in LaTeX commands like \\\\cite, must be escaped with a second backslash (e.g., \\\\\\\\cite).';
+  const JSON_TOP_LEVEL_LINE = 'The output must have a top-level "corrections" array matching the schema above.';
+  const JSON_ORDER_LINE = 'Important: Return the list of corrections in the order they appear in the document.';
+  const JSON_EMPTY_LINE_BY_TYPE = {
+    grammar: 'If no errors are found, return {"corrections": []}.',
+    style: 'In the rare case that no improvements are needed, return {"corrections": []}.'
+  };
+  const CUSTOM_COMMENT_GUIDANCE = 'Use type: "comment" (with original == corrected) for no-change notes or questions; place the note in the explanation.';
+  const LATEX_EDIT_GUIDANCE = 'If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, use a no-change comment (original == corrected) and explain.';
+  const GRAMMAR_ORDER_LINE = 'Important: Return the list of corrections in the order they appear in the document. DOUBLE CHECK THAT SUGGESTIONS YOU MAKE ACTUALLY REQUIRE A CORRECTION - NEVER SUGGEST "No change needed" OR SIMILAR!';
+  const GRAMMAR_FOCUS_GUIDANCE = 'Focus only on clear errors which are unambiguous. DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. Do not suggest changes for LaTeX commands (like \\\\documentclass), including opening or closing brackets, and do not correct single vs. double spaces. Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors.';
+
+  function buildJsonExample(typeLabel) {
+    return `{\n  "corrections": [\n    { "original": "...", "corrected": "...", "explanation": "...", "type": "${typeLabel}" }\n  ]\n}`;
+  }
+
+  function buildJsonParagraphGuidance(typeLabel, extraLines = [], options = {}) {
+    const orderLine = options.orderLine || JSON_ORDER_LINE;
+    const emptyLine = JSON_EMPTY_LINE_BY_TYPE[typeLabel] || JSON_EMPTY_LINE_BY_TYPE.style;
+    const lines = [
+      `Return ONLY a JSON object of the form:\n${buildJsonExample(typeLabel)}`,
+      orderLine,
+      ...extraLines,
+      JSON_STRICTNESS_LINE,
+      JSON_TOP_LEVEL_LINE,
+      emptyLine
+    ];
+    return lines.join('\n');
+  }
+
+  function buildJsonBulletGuidance(typeLabel, extraBullets = [], options = {}) {
+    const orderLine = options.orderLine || JSON_ORDER_LINE;
+    const emptyLine = JSON_EMPTY_LINE_BY_TYPE[typeLabel] || JSON_EMPTY_LINE_BY_TYPE.style;
+    const bullets = [
+      `Return ONLY a JSON object of the form:\n${buildJsonExample(typeLabel)}`,
+      orderLine,
+      ...extraBullets,
+      JSON_STRICTNESS_LINE,
+      JSON_TOP_LEVEL_LINE,
+      emptyLine
+    ];
+    return bullets.map(item => `- ${item}`).join('\n');
+  }
+
+  function buildCustomPromptBody({
+    baseInstruction,
+    currentDate,
+    userInstructions,
+    boundaryGuidance,
+    text,
+    docLabel
+  }) {
+    const jsonBullets = buildJsonBulletGuidance('style', [
+      LATEX_EDIT_GUIDANCE,
+      CUSTOM_COMMENT_GUIDANCE
+    ]);
+    const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : '\n\n';
+    return `${baseInstruction}You are a professional copy editor. It is ${currentDate}.${boundaryBlock}
+PRIORITY: Follow the user instructions below exactly. They define the focus, scope, and goal and override other guidance unless explicitly contradicted.
+
+# User Instructions
+${userInstructions}
+
+# General instructions
+${jsonBullets}
+
+${docLabel}
+\`\`\`
+${text}
+\`\`\`
+`;
+  }
+
+  function buildGrammarPromptBody({
+    baseInstruction,
+    currentDate,
+    boundaryGuidance,
+    text,
+    docLabel
+  }) {
+    const jsonGuidance = buildJsonParagraphGuidance('grammar', [GRAMMAR_FOCUS_GUIDANCE], {
+      orderLine: GRAMMAR_ORDER_LINE
+    });
+    const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : ' ';
+    return `${baseInstruction}You are an elite editor on ${currentDate}. Analyze the following document for grammatical errors, typos, and spelling mistakes.${boundaryBlock}${jsonGuidance}
+
+${docLabel}
+\`\`\`
+${text}
+\`\`\`
+`;
+  }
+
+  function buildStylePromptBody({
+    rulePrompt,
+    baseInstruction,
+    currentDate,
+    boundaryGuidance,
+    text,
+    docLabel
+  }) {
+    const styleInstructions = `Do not check grammar or spelling.\nIf you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).`;
+    const jsonGuidance = buildJsonParagraphGuidance('style', [
+      styleInstructions,
+      LATEX_EDIT_GUIDANCE
+    ]);
+    const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : '\n\n';
+    const prefix = rulePrompt ? `${rulePrompt} ` : '';
+    return `${prefix}${baseInstruction}It is ${currentDate}.${boundaryBlock}${jsonGuidance}
+
+${docLabel}
+\`\`\`
+${text}
+\`\`\`
+`;
+  }
+
   function generatePrompt(text, rule, contextText = '') {
     const languageInstruction = languageInstructionText();
     const formatInstruction = formatInstructionText();
@@ -23,76 +140,109 @@
     // Custom path: wrap user instructions explicitly
     if (rule.isCustom) {
       const userInstructions = rule.prompt || '';
-      return `${baseInstruction}You are a professional copy editor. It is ${currentDate}.
-
-PRIORITY: Follow the user instructions below exactly. They define the focus, scope, and goal and override other guidance unless explicitly contradicted.
-
-# User Instructions
-${userInstructions}
-
-# General instructions
-- Return ONLY a JSON object of the form:
-{
-  "corrections": [
-    { "original": "...", "corrected": "...", "explanation": "...", "type": "style" }
-  ]
-}
-- Important: Return the list of corrections in the order they appear in the document.
-- If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, use a no-change comment (original == corrected) and explain.
-- Use type: "comment" (with original == corrected) for no-change notes or questions; place the note in the explanation.
-- IMPORTANT: The output MUST be a valid JSON object with a top-level "corrections" array, matching the schema above. All backslashes \\ in the text, such as in LaTeX commands like \\cite, must be escaped with a second backslash (e.g., \\\\cite).
-- If no improvements are needed, return {"corrections": []}.
-
-# Document
-\`\`\`
-${text}
-\`\`\`
-${contextBlock}
-`;
+      return `${buildCustomPromptBody({
+        baseInstruction,
+        currentDate,
+        userInstructions,
+        boundaryGuidance: '',
+        text,
+        docLabel: '# Document'
+      })}${contextBlock}`;
     }
 
     if (rule.type === 'grammar') {
-      return `${baseInstruction}You are an elite editor on ${currentDate}. Analyze the following document for grammatical errors, typos, and spelling mistakes. Return ONLY a JSON object of the form:
-{
-  "corrections": [
-    { "original": "...", "corrected": "...", "explanation": "...", "type": "grammar" }
-  ]
-}
-Important: Return the list of corrections in the order they appear in the document. DOUBLE CHECK THAT SUGGESTIONS YOU MAKE ACTUALLY REQUIRE A CORRECTION - NEVER SUGGEST 'No change needed' OR SIMILAR!
-
-Focus only on clear errors which are unambiguous. DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. Do not suggest changes for LaTeX commands (like \\documentclass), including opening or closing brackets, and do not correct single vs. double spaces.  Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors. IMPORTANT: The output MUST be a valid JSON object. All backslashes \\ in the text, such as in LaTeX commands like \\cite, must be escaped with a second backslash (e.g., \\\\cite).
-The output must have a top-level "corrections" array matching the schema above. If no errors are found, return {"corrections": []}.  
-
-Document to analyze:
-\`\`\`
-${text}
-\`\`\`
-${contextBlock}
-`;
+      return `${buildGrammarPromptBody({
+        baseInstruction,
+        currentDate,
+        boundaryGuidance: '',
+        text,
+        docLabel: 'Document to analyze:'
+      })}${contextBlock}`;
     } else {
-      const styleInstructions = `Do not check grammar or spelling.
-If you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).`;
-
-      return `${rule.prompt} ${baseInstruction}It is ${currentDate}.
-
-Return ONLY a JSON object of the form:
-{
-  "corrections": [
-    { "original": "...", "corrected": "...", "explanation": "...", "type": "style" }
-  ]
-}
-Important: Return the list of corrections in the order they appear in the document.
-
-${styleInstructions} If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, use a no-change comment (original == corrected) and explain. IMPORTANT: The output MUST be a valid JSON object. All backslashes \\ in the text, such as in LaTeX commands like \\cite, must be escaped with a second backslash (e.g., \\\\cite).
-The output must have a top-level "corrections" array matching the schema above. In the rare case that no improvements are needed, return {"corrections": []}.
-
-Document to analyze:
-\`\`\`
-${text}
-\`\`\`
-${contextBlock}
-`;
+      return `${buildStylePromptBody({
+        rulePrompt: rule.prompt || '',
+        baseInstruction,
+        currentDate,
+        boundaryGuidance: '',
+        text,
+        docLabel: 'Document to analyze:'
+      })}${contextBlock}`;
     }
+  }
+
+  function generateChunkPromptMessages({
+    text,
+    rule,
+    contextBefore = '',
+    contextAfter = '',
+    extraContext = '',
+    chunkIndex = 0,
+    chunkCount = 1
+  }) {
+    const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
+    const currentDate = new Date();
+    const boundaryGuidance = `Chunk boundary note:
+- This is chunk ${chunkIndex + 1} of ${chunkCount}.
+- Messages 1/3 and 3/3 are read-only context; only edit the text in Message 2/3.
+- The marker "CHUNK CONTINUES" indicates the text is truncated at a boundary; do NOT complete or infer missing text.
+- If a sentence or LaTeX environment is cut off at a boundary, do not rewrite it. If needed, add a comment with original == corrected noting the truncation.`;
+    const beforeMarker = contextBefore ? 'CHUNK CONTINUES.' : 'START OF DOCUMENT.';
+    const afterMarker = contextAfter ? 'CHUNK CONTINUES.' : 'END OF DOCUMENT.';
+    const beforeBlock = contextBefore
+      ? `\`\`\`\n${contextBefore}\n\`\`\``
+      : '(no preceding context)';
+    const afterBlock = contextAfter
+      ? `\`\`\`\n${contextAfter}\n\`\`\``
+      : '(no following context)';
+    const extraBlock = extraContext
+      ? `\nAdditional context (read-only, outside the chunk):\n\`\`\`\n${extraContext}\n\`\`\`\n`
+      : '';
+
+    const message1 = `Message 1/3: Context BEFORE (read-only).
+${beforeBlock}
+${beforeMarker}${extraBlock}`;
+
+    let message2 = '';
+    if (rule.isCustom) {
+      const userInstructions = rule.prompt || '';
+      message2 = buildCustomPromptBody({
+        baseInstruction,
+        currentDate,
+        userInstructions,
+        boundaryGuidance,
+        text,
+        docLabel: '# Editable Chunk (Message 2/3)'
+      });
+    } else if (rule.type === 'grammar') {
+      message2 = buildGrammarPromptBody({
+        baseInstruction,
+        currentDate,
+        boundaryGuidance,
+        text,
+        docLabel: 'Editable Chunk (Message 2/3):'
+      });
+    } else {
+      message2 = buildStylePromptBody({
+        rulePrompt: rule.prompt || '',
+        baseInstruction,
+        currentDate,
+        boundaryGuidance,
+        text,
+        docLabel: 'Editable Chunk (Message 2/3):'
+      });
+    }
+
+    const message3 = `Message 3/3: Context AFTER (read-only).
+${afterBlock}
+${afterMarker}`;
+
+    return [
+      { role: 'user', content: message1 },
+      { role: 'user', content: message2 },
+      { role: 'user', content: message3 }
+    ];
   }
 
   function generateSimplificationPrompt(text, context) {
@@ -262,6 +412,7 @@ ${contextBlock}
   window.PROMPT_TEMPLATES = {
     buildJsonSchema,
     generatePrompt,
+    generateChunkPromptMessages,
     generateSimplificationPrompt,
     generateProofCheckPrompt,
     generateCustomAskPrompt
