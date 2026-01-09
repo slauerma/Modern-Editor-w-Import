@@ -1,0 +1,5243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modern Editor</title>
+<!-- Original: ModernEditor, Kevin Bryan, July 2025, MIT License -->
+<script src="keys.js" defer></script>
+<script src="styles.js" defer></script>
+<script src="comment_prompt.js" defer></script>
+<script src="input/loading_tips.js"></script>
+<script src="sample_text.js"></script>
+<script src="prompt_templates.js"></script>
+<style>
+/* ───── Basics ───── */
+:root {
+  --font-serif: 'Georgia', 'Times New Roman', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg-color: #fffff8;
+  --text-color: #1a1a1a;
+  --border-color: #d4d4d4;
+  --highlight-inactive: rgba(255, 229, 153, 0.7); /* Soft Yellow */
+  --highlight-active: rgba(255, 204, 203, 1);
+  --suggestion-red: #d14;
+  --suggestion-green: #22863a;
+  --user-highlight: rgba(100, 149, 237, 0.3); /* Soft blue for user selection */
+  --rule-style: #059669;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-serif);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ───── Header Test ───── */
+.header {
+  position: fixed;
+  top: 2rem;
+  left: 0;
+  z-index: 100;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: auto;
+}
+
+.hamburger-btn,
+.icon-btn,
+.nav-btn {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 6px;
+  font-size: 1.5rem;
+}
+
+.hamburger-btn:hover, .icon-btn:hover, 
+.nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.icon-btn svg {
+  stroke: currentColor;
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Correction controls */
+.correction-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.nav-info {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  color: #666;
+  font-weight: 500;
+}
+
+.shortcut-hint {
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  color: #666;
+  text-align: left;
+  padding: 2px 4px;
+}
+
+.no-suggestions-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Selection actions */
+.selection-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.selection-btn {
+  padding: 8px 12px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.selection-btn:hover {
+  background: #1d4ed8;
+}
+
+.selection-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.custom-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-ask input {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+}
+
+.import-choice-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.import-tip {
+  color: #555;
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin: 4px 4px 0 0;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #f9f9f9;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+}
+
+.preset-chip:hover {
+  background: #fff;
+  border-color: #bbb;
+}
+
+.custom-model-info {
+  font-size: 0.8rem;
+  color: #555;
+  margin-top: 8px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+.log-block {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  background: #fafafa;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.diff-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diff-row {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px;
+  background: #fdfdfd;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.diff-row h4 {
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: #444;
+}
+
+.diff-pair {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.diff-cell {
+  flex: 1 1 320px;
+  border: 1px dashed #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fff;
+  min-height: 40px;
+}
+
+.custom-prompt-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+
+/* Main content with left margin */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2rem;
+  padding-left: 140px; /* Space for the sidebar + buttons */
+  padding-bottom: 220px; /* Leave room for the fixed popover at the bottom */
+  position: relative;
+}
+
+/* Responsive: ensure content doesn't overlap on narrow viewports */
+@media (max-width: 600px) {
+  .main-content {
+    padding-left: 110px;
+  }
+  
+  .header {
+    padding: 8px;
+  }
+  
+  .hamburger-btn,
+  .icon-btn,
+  .nav-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Hamburger Menu */
+.hamburger-menu {
+  position: fixed;
+  top: 0;
+  left: -300px;
+  width: 300px;
+  height: 100vh;
+  background: var(--bg-color);
+  border-right: 1px solid var(--border-color);
+  z-index: 1000;
+  transition: left 0.3s ease;
+  overflow-y: auto;
+}
+
+.hamburger-menu.open {
+  left: 0;
+}
+
+.analysis-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.nav-arrow-group {
+    display: flex;
+    gap: 8px;
+}
+
+/* Styles the smaller arrow buttons within the new layout */
+.nav-arrow-group .nav-btn {
+    flex: 1; /* Makes both buttons share the width equally */
+    width: auto; /* Overrides the default fixed width */
+    height: 36px; /* Makes the buttons shorter */
+    padding: 0;
+    font-size: 1.2rem;
+}
+
+
+.menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 999;
+  display: none;
+}
+
+.menu-overlay.visible {
+  display: block;
+}
+
+
+.menu-style-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-top: 8px;
+  background: white;
+}
+
+.menu-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.menu-header h2 {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.menu-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.menu-content {
+  padding: 20px;
+}
+
+.menu-item {
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.menu-item:hover {
+  background: #f0f0f0;
+}
+
+.menu-divider {
+  margin: 20px 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
+}
+
+.menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.menu-toggle input {
+  cursor: pointer;
+}
+
+.menu-select-group {
+  margin-top: 16px;
+  padding: 0 16px;
+}
+
+.menu-select-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.menu-select-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-bottom: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.status-bar.status-ok {
+  border-color: #c5e6c5;
+}
+
+.status-bar.status-missing {
+  border-color: #f5c2c7;
+}
+
+.status-manage-btn {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+
+.api-key-info-line {
+  font-size: 0.75rem;
+  color: #555;
+  margin-top: 2px;
+}
+
+.analyze-btn {
+  padding: 8px 12px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  width: 100%; /* Make them fill the sidebar width */
+}
+
+.analyze-btn:hover {
+  background: #111;
+}
+
+.correction-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.correction-actions .popover-btn {
+  width: 100%;
+  padding: 8px; /* Give them more vertical space */
+}
+
+.control-label {
+    font-size: 0.8rem;
+    color: #666;
+    font-family: var(--font-sans);
+}
+
+.api-key-input {
+  padding: 5px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  background: white;
+  color: var(--text-color);
+  -webkit-appearance: none;
+  appearance: none;
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.25em;
+  padding-right: 2rem;
+  width: 200px;
+  background-image: none;
+}
+
+
+/* ───── Main Content Layout ───── */
+.editor-wrapper {
+  max-width: 80ch;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ───── Editor & Highlight Overlay ───── */
+.editor-textarea, .highlight-overlay {
+  width: 100%;
+  min-height: 50vh;
+  padding: 1rem;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.7;
+  border: 1px solid transparent;
+  background: transparent;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: var(--text-color);
+}
+
+.editor-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  resize: none;
+  outline: none;
+  z-index: 2;
+  color: transparent; /* hide base text to avoid double rendering */
+  caret-color: var(--text-color);
+  overflow: hidden;
+}
+.editor-textarea::selection {
+  background: rgba(100, 149, 237, 0.3);
+}
+
+.highlight-overlay {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.highlight-overlay.has-suggestions {
+  pointer-events: auto;
+}
+
+/* ───── Suggestion Highlighting ───── */
+.suggestion {
+  background-color: var(--highlight-inactive);
+  border-radius: 3px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: background-color 0.3s;
+  scroll-margin-bottom: 110px; 
+}
+
+.suggestion.active {
+  background-color: var(--highlight-active);
+}
+
+/* ───── User Selection Highlighting ───── */
+.user-selection {
+  background-color: var(--user-highlight);
+  border-radius: 3px;
+  position: relative;
+}
+
+/* ───── Suggestion Popover ───── */
+.suggestion-popover {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: rgba(255, 255, 248, 0.98);
+  border-top: 2px solid #ccc;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+  padding: 16px 20px; 
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+}
+
+.suggestion-popover.visible {
+  transform: translateY(0);
+}
+
+
+.selection-disabled-hint {
+  color: var(--suggestion-red);
+  font-style: italic;
+  font-size: 0.8rem;
+  margin: 0 auto; /* Center it a bit */
+  display: none; /* Hidden by default */
+}
+
+.popover-counter {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.popover-diff {
+  font-size: 1rem;
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.popover-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  max-width: 400px;
+  margin: 16px auto 0;
+}
+
+.popover-explanation {
+  font-style: normal;
+  color: #111;
+  margin-bottom: 16px;
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto 16px;
+  font-size: 1rem;
+  line-height: 1.5;
+  background: #f5f5f5;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.popover-diff del {
+  color: inherit;
+  text-decoration: none;
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.popover-diff ins {
+  color: inherit;
+  text-decoration: none;
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.popover-diff del,
+.popover-diff ins {
+  white-space: pre-wrap;
+}
+
+/* Word-level diff styling inside the suggestion popover */
+.diff-del {
+  background-color: #ffebe9;
+  text-decoration: none;
+  border-radius: 2px;
+  padding: 1px 2px;
+  color: var(--suggestion-red);
+}
+
+.diff-ins {
+  background-color: #e6ffed;
+  border-radius: 2px;
+  padding: 1px 2px;
+  color: var(--suggestion-green);
+}
+
+.popover-actions-extra {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.popover-btn {
+  padding: 4px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  background: white;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.popover-btn.accept:hover {
+  background: #e6ffed;
+  border-color: var(--suggestion-green);
+  color: var(--suggestion-green);
+}
+.popover-btn.reject:hover {
+  background: #ffebe9;
+  border-color: var(--suggestion-red);
+  color: var(--suggestion-red);
+}
+
+/* ───── Summary Modal (used for proofs and simplifications) ───── */
+.summary-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--bg-color);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 24px;
+  font-family: var(--font-sans);
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+
+.summary-modal.visible {
+  display: block;
+}
+
+.summary-modal h2 {
+  font-size: 1.3rem;
+  margin-bottom: 16px;
+  font-weight: 500;
+  cursor: move;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.summary-esc-hint {
+  font-size: 0.8rem;
+  color: #777;
+  font-weight: 400;
+}
+
+.summary-section {
+  margin-bottom: 20px;
+}
+
+.summary-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 8px;
+}
+
+.summary-section p,
+.summary-section ul {
+  color: #666;
+  line-height: 1.6;
+}
+
+.summary-section ul {
+  margin-left: 20px;
+}
+.summary-modal.dragging {
+  cursor: move;
+}
+
+.locked {
+  pointer-events: none;
+}
+
+.simplification-option {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.simplification-option:hover {
+  background: #f8f8f8;
+  border-color: #999;
+}
+
+.simplification-label {
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.simplification-text {
+  color: #222;
+  line-height: 1.6;
+}
+
+.summary-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #666;
+  padding: 4px 8px;
+}
+
+.summary-close:hover {
+  color: #222;
+}
+
+.popover-diff ins[contenteditable="true"]:focus {
+  outline: 1px solid #888;
+  box-shadow: 0 0 3px rgba(0,0,0,0.1);
+  background-color: #fff; /* Make background solid white on focus for better editing */
+}
+
+/* ───── Modal Overlay ───── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 99;
+  display: none;
+}
+
+.modal-overlay.visible {
+  display: block;
+}
+
+/* ───── Loading & Empty State ───── */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 248, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  font-family: var(--font-sans);
+}
+
+.loading-content {
+  text-align: center;
+  max-width: 640px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.loading-spinner {
+  border: 2px solid #ccc;
+  border-top: 2px solid #333;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.loading-text { font-size: 0.9rem; color: #666; font-style: italic; }
+.loading-settings {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: #444;
+  line-height: 1.4;
+  text-align: center;
+}
+.loading-tip {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #555;
+  max-width: 420px;
+  line-height: 1.4;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+.loading-actions {
+  margin-top: 4px;
+  display: flex;
+  justify-content: center;
+}
+.loading-cancel-btn {
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+}
+.loading-cancel-btn:hover {
+  background: #f0f0f0;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #888;
+    font-family: var(--font-sans);
+}
+.empty-state h3 { font-weight: 500; font-size: 1.1rem; }
+.empty-state p { font-style: italic; margin-top: 0.5rem; }
+
+/* ───── About Modal ───── */
+.about-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1200px;
+  max-width: 90vw;
+  background: var(--bg-color);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 32px;
+  font-family: var(--font-sans);
+  z-index: 100;
+  display: none;
+}
+
+.about-modal.visible {
+  display: block;
+}
+
+.about-modal h2 {
+  font-size: 1.4rem;
+  margin-bottom: 20px;
+  font-weight: 500;
+}
+
+.about-modal h3 {
+  font-size: 1.1rem;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #444;
+}
+
+.about-modal p {
+  line-height: 1.6;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.about-modal ul {
+  margin-left: 20px;
+  color: #666;
+  line-height: 1.8;
+}
+
+.about-modal a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.about-modal a:hover {
+  text-decoration: underline;
+}
+
+/* ───── File Upload Modal ───── */
+.file-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-width: 90vw;
+  background: var(--bg-color);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 32px;
+  font-family: var(--font-sans);
+  z-index: 100;
+  display: none;
+}
+
+.file-modal.visible {
+  display: block;
+}
+
+.file-modal h2 {
+  font-size: 1.2rem;
+  margin-bottom: 20px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  transition: all 0.3s;
+  cursor: pointer;
+  background: #fafafa;
+}
+
+.drop-zone:hover {
+  border-color: #999;
+  background: #f5f5f5;
+}
+
+.drop-zone.dragging {
+  border-color: #2563eb;
+  background: #e0e7ff;
+}
+
+.drop-zone p {
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.file-input {
+  display: none;
+}
+
+.file-btn {
+  padding: 8px 20px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-btn:hover {
+  background: #111;
+}
+.api-key-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-color);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 32px;
+  font-family: var(--font-sans);
+  z-index: 1001;
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+}
+
+.api-key-modal h2 {
+  font-size: 1.2rem;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.api-key-modal p {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.api-key-modal input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  font-family: monospace;
+}
+
+.api-key-modal button {
+  padding: 8px 24px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.api-key-modal button:hover {
+  background: #111;
+}
+
+.credit-link {
+  font-size: 0.7rem;
+  color: #666;
+  text-decoration: none;
+  margin-top: 4px;
+}
+
+.credit-link:hover {
+  text-decoration: underline;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <button class="hamburger-btn" id="hamburgerBtn">☰</button>
+  <button class="nav-btn icon-btn" id="copyBtn" title="Copy Text">
+    <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+    <svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+  </button>
+  <button class="nav-btn icon-btn" id="downloadBtn" title="Download as .txt">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+  </button>
+
+  <!-- Wrapper for analysis buttons to add the line above -->
+  <div class="analysis-controls">
+    <button class="selection-btn analyze-btn" id="analyzeGrammarBtn">Grammar</button>
+    <button class="selection-btn analyze-btn" id="analyzeStyleBtn">Style</button>
+    <button class="selection-btn analyze-btn" id="customPromptBtn">Custom Task</button>
+    <button class="selection-btn analyze-btn" id="importOptionsBtn">Import Comments</button>
+  </div>
+
+  <!-- Navigation controls (visible during corrections) -->
+  <div class="correction-controls" id="correctionControls" style="display: none;">
+    <div class="nav-info" id="navInfo">0 / 0</div>
+    <!-- Wrapper for side-by-side arrows -->
+    <div class="nav-arrow-group">
+        <button class="nav-btn" id="prevBtn">←</button>
+        <button class="nav-btn" id="nextBtn">→</button>
+        <button class="nav-btn" id="undoBtn" title="Undo Last Action (⎌)" style="display: none;">⎌</button>
+    </div>
+    <!-- Accept/Reject buttons are now correctly inside this container -->
+    <div class="correction-actions">
+        <button class="popover-btn reject" id="popoverRejectBtn">Reject (Del)</button>
+        <button class="popover-btn accept" id="popoverAcceptBtn">Accept (Enter)</button>
+        <button class="popover-btn" id="popoverEditShortcutBtn" style="pointer-events:none; opacity:0.8;">Edit (E)</button>
+        <button class="popover-btn reject" id="rejectAllBtn">Reject All</button>
+    </div>
+  <div class="nav-info no-suggestions" id="noSuggestionsBadge" style="display:none;">No suggestions</div>
+  <div class="no-suggestions-actions" id="noSuggestionsActions" style="display:none;">
+    <button class="selection-btn analyze-btn" id="viewDiffShortcutBtn">View Global Diff</button>
+  </div>
+</div>
+  
+  <!-- Selection actions (visible when text selected) -->
+  <div class="selection-actions" id="selectionActions" style="display: none;">
+    <button class="selection-btn" id="simplifyBtn">Simplify</button>
+    <button class="selection-btn" id="proofBtn">Check Proof</button>
+    <div class="custom-ask">
+      <input type="text" id="customAskInput" placeholder="Custom instruction (e.g., Help me improve this part)">
+      <button class="selection-btn" id="customAskBtn">Custom Ask</button>
+    </div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:2px; margin-top:4px;">
+    <a class="credit-link" href="https://kevinbryanecon.com" target="_blank" rel="noopener">Built by Kevin Bryan</a>
+    <a class="credit-link" href="https://sites.google.com/site/slauerma/" target="_blank" rel="noopener" aria-label="Revised by Stephan Lauermann">Revised by Stephan Lauermann</a>
+  </div>
+</div>
+
+<!-- Hamburger Menu -->
+<div class="hamburger-menu" id="hamburgerMenu">
+  <div class="menu-header">
+    <h2>Modern Editor</h2>
+    <button class="menu-close" id="menuClose">×</button>
+  </div>
+  <div class="menu-content">
+    <button class="menu-item" id="helpBtn" style="background-color:#000000; color:#FFFFFF;">Help</button>
+    <hr class="menu-divider">
+    <button class="menu-item" id="newDocBtn">Load New Document</button>
+    <button class="menu-item" id="saveSessionBtn">Save Session (.json)</button>
+    <button class="menu-item" id="loadSessionBtn">Load Session (.json)</button>
+    <button class="menu-item" id="lastRunLogBtn">Show Last Prompt/Response</button>
+    <button class="menu-item" id="manageKeysBtn">API keys / status…</button>
+    <button class="menu-item" id="viewDiffBtn">View Global Diff</button>
+    <button class="menu-item" id="downloadDiffBtn">Download Global Diff (.txt)</button>
+    <hr class="menu-divider">
+    <div class="menu-select-group">
+    <select id="ruleSelect" style="display: none;">
+      <!-- Options will be populated from rules.js -->
+    </select>
+    <div class="menu-select-group">
+      <label for="languageSelect">Language:</label>
+      <select id="languageSelect">
+        <option value="en-US">English (US)</option>
+        <option value="en-CAN">English (CAN)</option>
+        <option value="en-UK">English (UK)</option>
+        <option value="fr">French</option>
+        <option value="es">Spanish</option>
+        <option value="de">German</option>
+        <option value="ca">Catalan</option>
+      </select>
+    </div>
+    <div class="menu-select-group">
+      <label for="styleSelect">Style Rule:</label>
+      <select id="styleSelect" class="menu-style-select">
+        <!-- Options will be populated from rules.js -->
+      </select>
+    </div>
+    <div class="menu-select-group">
+      <label for="modelFamilySelect">Model:</label>
+      <select id="modelFamilySelect">
+        <option value="thinking">GPT-5.1 (thinking)</option>
+        <option value="thinking-heavy">GPT-5.1 (thinking-heavy)</option>
+        <option value="thinking-min">GPT-5.1 (minimal thinking)</option>
+        <option value="no-reasoning">GPT-5.1 (no reasoning)</option>
+        <option value="pro">GPT-5-pro (Expensive!)</option>
+        <option value="mini">GPT-4.1-mini</option>
+        <option value="gemini_flash">Gemini 2.5 Flash (Google)</option>
+        <option value="gemini_pro">Gemini 2.5 Pro (Google)</option>
+      </select>
+    </div>
+    <div class="menu-section" id="apiKeyInfo">
+      <div id="openaiKeyInfoText" class="api-key-info-line"></div>
+      <div id="geminiKeyInfoText" class="api-key-info-line"></div>
+    </div>
+    <div class="menu-select-group">
+      <label>Tools (GPT-5.1 thinking only):</label>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:4px;">
+        <label style="font-weight:400; font-size:0.85rem;">
+          <input type="checkbox" id="toolWebSearch">
+          Web search
+        </label>
+        <label style="font-weight:400; font-size:0.85rem;">
+          <input type="checkbox" id="toolCodeInterpreter">
+          Python (Code Interpreter)
+        </label>
+      </div>
+    </div>
+    </div>
+  </div>
+</div>
+<div class="menu-overlay" id="menuOverlay"></div>
+
+<!-- Main Content -->
+<main class="main-content" id="mainContent">
+  <div id="apiStatusBar" class="status-bar">
+    <span id="apiStatusText"></span>
+    <button id="apiStatusManageBtn" class="status-manage-btn">Manage keys</button>
+  </div>
+  <div class="editor-wrapper">
+    <div class="highlight-overlay" id="highlightOverlay"></div>
+    <textarea class="editor-textarea" id="documentInput" placeholder="Paste or write your document here..."></textarea>
+  </div>
+</main>
+
+
+<!-- Suggestion Popover -->
+<div class="suggestion-popover" id="suggestionPopover">
+  <div class="popover-explanation" id="popoverExplanation"></div>
+  <div class="popover-diff">
+    <del id="popoverOriginal"></del> 
+    → 
+    <ins id="popoverCorrected"></ins>
+  </div>
+  <div class="popover-actions-extra">
+    <button class="popover-btn" id="popoverEditBtn">Edit suggestion</button>
+  </div>
+</div>
+
+<!-- Simplification Modal -->
+<div class="modal-overlay" id="simplificationOverlay"></div>
+<div class="summary-modal" id="simplificationModal">
+  <button class="summary-close" id="simplificationModalClose">×</button>
+  <h2>Simplification Options <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div class="summary-section">
+    <h3>Original Text</h3>
+    <p id="simplificationOriginal" style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-style: italic;"></p>
+  </div>
+  <div id="simplificationOptions"></div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display: none;">
+  <div class="loading-content">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Analyzing...</div>
+    <div class="loading-settings" id="loadingSettings"></div>
+    <div class="loading-tip" id="loadingTip"></div>
+    <div class="loading-actions">
+      <button class="loading-cancel-btn" id="cancelRequestBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Modal -->
+<div class="modal-overlay" id="modalOverlay"></div>
+<div class="summary-modal" id="summaryModal">
+  <button class="summary-close" id="summaryClose">×</button>
+  <h2>Document Summary <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div id="summaryContent"></div>
+</div>
+
+<!-- Import Choice Modal -->
+<div class="modal-overlay" id="importChoiceOverlay"></div>
+<div class="summary-modal" id="importChoiceModal">
+  <button class="summary-close" id="importChoiceClose">×</button>
+  <h2>Import Corrections</h2>
+  <div class="summary-section">
+    <p style="color:#666; font-size:0.9rem;">Choose how to bring corrections into the editor:</p>
+    <div class="import-choice-grid">
+      <button class="selection-btn analyze-btn" id="importStructuredBtn">Import Structured JSON (offline)</button>
+      <button class="selection-btn analyze-btn" id="importUnstructuredBtn">Import Unstructured Comments</button>
+      <button class="selection-btn analyze-btn" id="importExampleBtn">Example (offline)</button>
+    </div>
+    <p class="import-tip">Example loads the sample document and sample corrections so you can see how highlights look without calling the API.</p>
+  </div>
+</div>
+
+<!-- JSON Import Modal -->
+<div class="modal-overlay" id="jsonOverlay"></div>
+<div class="summary-modal" id="jsonModal">
+  <button class="summary-close" id="jsonClose">×</button>
+  <h2>Paste Corrections JSON <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div class="summary-section">
+    <p style="color:#666; font-size:0.85rem;">
+      Paste a JSON object of the form <code>{"corrections": [{ "original": "...", "corrected": "...", "explanation": "...", "type": "grammar" }]}</code>
+      generated by ChatGPT or another model for this exact document.
+      <br><br>
+      Tip: if JSON import fails, try the Unstructured Comments import, or regenerate JSON in two steps: (1) ask for a table with columns [original sentence, comment, correction], then (2) turn that table into the JSON shape above.
+      <br><br>
+      Prompt examples:
+      <a href="input/prompt_json_grammar.md" target="_blank" rel="noopener" data-new-tab="true">grammar</a> |
+      <a href="input/prompt_json_fact-checker.md" target="_blank" rel="noopener" data-new-tab="true">fact-checker</a> |
+      <a href="input/prompt_json_fact-generic.md" target="_blank" rel="noopener" data-new-tab="true">generic</a> |
+      <a href="input/prompt-check-everything.md" target="_blank" rel="noopener" data-new-tab="true">check-everything</a> |
+      <a href="input/prompt_json_translate.md" target="_blank" rel="noopener" data-new-tab="true">translate comments → JSON (full)</a> |
+      <a href="input/prompt_json_translate_lite.md" target="_blank" rel="noopener" data-new-tab="true">translate comments → JSON (lite)</a>
+      <br><br>
+      Example JSON you can paste: <a href="sample_comments.json" target="_blank" rel="noopener" data-new-tab="true">sample_comments.json</a>
+    </p>
+  </div>
+  <div class="summary-section">
+    <textarea id="jsonInput" style="width:100%; height:200px; font-family:monospace; font-size:0.85rem;"></textarea>
+  </div>
+  <div class="popover-actions">
+    <button class="popover-btn reject" id="jsonCancelBtn">Cancel</button>
+    <button class="popover-btn accept" id="jsonApplyBtn">Load Corrections</button>
+  </div>
+</div>
+
+<!-- Global Diff Modal -->
+<div class="modal-overlay" id="diffOverlay"></div>
+<div class="summary-modal" id="diffModal">
+  <button class="summary-close" id="diffClose">×</button>
+  <h2>Global Diff <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div class="summary-section">
+    <div id="diffContent" class="diff-grid" style="max-height:50vh; overflow:auto;"></div>
+  </div>
+  <div class="popover-actions">
+    <button class="popover-btn" id="diffDownloadBtn">Download (.txt)</button>
+    <button class="popover-btn" id="diffNewWindowBtn">Show in separate window</button>
+    <button class="popover-btn reject" id="diffDismissBtn">Close</button>
+  </div>
+</div>
+
+<!-- Freeform Comments Import Modal -->
+<div class="modal-overlay" id="commentsOverlay"></div>
+<div class="summary-modal" id="commentsModal">
+  <button class="summary-close" id="commentsClose">×</button>
+  <h2>Import Comments <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div class="summary-section">
+    <p style="color:#666; font-size:0.85rem;">
+      Paste informal or unstructured review comments here. We will send your current document and these comments to the model to turn them into structured JSON corrections (type: "grammar", including "No change comment" entries when appropriate).
+    </p>
+    <p style="color:#666; font-size:0.85rem;">
+      Suggested prompt: <code>Be a good copy editor and make some suggestions. Keep this local. Output format as a table: original sentence left, discussion middle, suggestion right.</code>
+      <br><br>
+      Prompt template: <a href="input/prompt_import_comments.md" target="_blank" rel="noopener" data-new-tab="true">comments</a>
+      <br><br>
+      Example freeform comments you can paste: <a href="input/example-unstructured-comments.md" target="_blank" rel="noopener" data-new-tab="true">example-unstructured-comments.md</a>
+    </p>
+  </div>
+  <div class="summary-section">
+    <textarea id="commentsInput" style="width:100%; height:180px; font-family:monospace; font-size:0.9rem;"></textarea>
+  </div>
+  <div class="popover-actions">
+    <button class="popover-btn reject" id="commentsCancelBtn">Cancel</button>
+    <button class="popover-btn accept" id="commentsApplyBtn">Generate Corrections</button>
+  </div>
+</div>
+
+<!-- Custom Prompt Modal -->
+<div class="modal-overlay" id="customPromptOverlay"></div>
+<div class="summary-modal" id="customPromptModal">
+  <button class="summary-close" id="customPromptClose">×</button>
+  <h2>Custom / User Instructions <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <div class="summary-section">
+    <p style="color:#666; font-size:0.9rem;">Describe how you want the model to edit. Start from a preset, then tweak the text.</p>
+    <div id="customPresetContainer"></div>
+  </div>
+  <div class="summary-section">
+    <label for="customInstructionInput" style="font-weight:600; display:block; margin-bottom:6px;">User instructions</label>
+    <textarea id="customInstructionInput" style="width:100%; height:150px; font-family:monospace; font-size:0.9rem;"></textarea>
+  </div>
+  <div class="summary-section" style="display:flex; gap:12px; flex-wrap:wrap;">
+    <div>
+      <div style="font-weight:600; margin-bottom:4px;">Scope</div>
+      <label style="display:block; font-size:0.9rem;"><input type="radio" name="customScope" value="auto" checked> Auto (selection if present, else full doc)</label>
+      <label style="display:block; font-size:0.9rem;"><input type="radio" name="customScope" value="selection"> Current selection only</label>
+      <label style="display:block; font-size:0.9rem;"><input type="radio" name="customScope" value="full"> Full document</label>
+    </div>
+    <div>
+      <div style="font-weight:600; margin-bottom:4px;">Editing strength</div>
+      <select id="customAggressiveness" style="padding:6px 8px; border:1px solid var(--border-color); border-radius:4px; font-family:var(--font-sans);">
+        <option value="minimal">Minimal</option>
+        <option value="moderate" selected>Moderate</option>
+        <option value="aggressive">Aggressive</option>
+      </select>
+    </div>
+  </div>
+  <div class="custom-prompt-actions">
+    <div id="customModelInfo" class="custom-model-info"></div>
+    <div style="flex:1;"></div>
+    <button class="popover-btn reject" id="customPromptReset">Reset</button>
+    <button class="popover-btn reject" id="customPromptCancel">Cancel</button>
+    <button class="popover-btn accept" id="customPromptRun">Run Custom Check</button>
+  </div>
+</div>
+
+<!-- Last Run Modal (injected via script) -->
+
+<!-- About Modal -->
+<div class="modal-overlay" id="aboutOverlay"></div>
+<div class="about-modal" id="aboutModal">
+  <button class="summary-close" id="aboutClose">×</button>
+  <strong>"Super Spell/Style/Grammar Check"</strong> (June 2025, updated July 2025; revised by Stephan Lauermann, November 2025)
+  <p>Created by <strong>Kevin Bryan</strong><br>
+  Associate Professor of Strategic Management, University of Toronto<br>
+  Co-founder, All Day TA</p>
+  
+  <p>
+    <a href="https://kevinbryanecon.com" target="_blank">kevinbryanecon.com</a> | 
+    <a href="https://alldayta.com" target="_blank">alldayta.com</a><br>
+    <a href="mailto:kevin.bryan@rotman.utoronto.ca">kevin.bryan@rotman.utoronto.ca</a><br>
+  </p>
+
+  <ul>
+    <li><strong>Spelling and Grammar:</strong> Context and LaTeX aware spelling and grammar check. You can set your language of choice.</li>
+    <li><strong>Style:</strong> Stylistic guidelines following specific rules. Some are preloaded (<i>Literary Nonfiction is my favorite</i>, but you can add your own if you download this package). Be VERY detailed about your style preferences!</li>
+    <li><strong>Custom / User instructions:</strong> Open the custom modal, pick presets (grammar, style, math, consistency, clarity), tweak the instructions, choose scope (selection/full/auto) and aggressiveness, then run a custom check.</li>
+    <li><strong>Simplify:</strong> Select a paragraph or two of text and a 'simplify' button will create three simplifications retaining technical content.</li>
+    <li><strong>Proof:</strong> (Beta) Select a theorem and proof, and the 'proof' button will attempt to analyze the logical and mathematical accuracy.</li>
+    <li><strong>Custom Ask:</strong> Select text, type your instruction (e.g., "Can I improve this?"), and click Custom Ask. We send only the selection (with nearby context read-only) and return a comment plus suggestions in the summary modal.</li>
+  </ul>
+  <h3>Keyboard Shortcuts</h3>
+  <ul>
+    <li><strong>←/→:</strong> Navigate between corrections</li>
+    <li><strong>Enter:</strong> Accept correction (you can also edit the green text before accepting, and undo if needed)</li>
+    <li><strong>Backspace/Delete:</strong> Reject correction</li>
+  </ul>
+  <p><strong>Selections & LaTeX:</strong> If you select text, only that span is analyzed (we send a ~2000 character context window read-only). Full-document runs strip the LaTeX preamble between <code>\\begin{document}</code> and <code>\\end{document}</code>; highlights are offset so suggestions still align.</p>
+  <p><strong>Keyboard scope:</strong> Navigation keys (←/→/Enter/Delete) only hijack input when corrections are showing and focus is not inside another input box; typing in fields like Custom/Import keeps normal cursor movement.</p>
+  <p><strong>Token usage:</strong> Open your browser console to see input/output/total tokens after each run.</p>
+  Choose your model in the menu (GPT-5.1 thinking, GPT-5-pro, or GPT-4.1-mini) to balance quality and cost. (Pricing reminder: add spend note later.)
+</div>
+
+<!-- File Upload Modal -->
+<div class="modal-overlay" id="fileOverlay"></div>
+<div class="file-modal" id="fileModal">
+  <button class="summary-close" id="fileClose">×</button>
+  <h2>Open File</h2>
+  <div class="drop-zone" id="dropZone">
+    <p>Drag and drop a .tex or .txt file here</p>
+    <p style="margin-bottom: 8px; font-size: 0.9rem;">or</p>
+    <button class="file-btn" id="fileSelectBtn">Choose File</button>
+    <input type="file" class="file-input" id="fileInput" accept=".tex,.txt">
+    <input type="file" id="sessionFileInput" accept=".json" style="display:none;">
+  </div>
+</div>
+
+<!-- API Key Modal -->
+<div class="api-key-modal" id="apiKeyModal" style="display: none;">
+  <h2>API Keys</h2>
+  <p>You can enter keys here (session only), preload them in <code>keys.js</code>, or point to local scripts via <code>OPENAI_KEY_PATHS</code>/<code>GEMINI_KEY_PATHS</code>. Keys are never sent anywhere except directly to the selected provider.</p>
+  <p>This editor is intended for .txt and .tex. After stylistic editing, copy or download the edited version back to your normal editor using the buttons on the bottom right.</p>
+  <p id="apiKeySourcesNote" style="margin-top:8px; font-size:0.8rem; color:#666;"></p>
+  <div class="api-key-section">
+    <h3>OpenAI</h3>
+    <input type="password" id="apiKeyInput" placeholder="Enter your OpenAI API key">
+  </div>
+  <div class="api-key-section">
+    <h3>Gemini (Google)</h3>
+    <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key">
+  </div>
+  <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+    <button id="apiKeySkip">Skip OpenAI for now</button>
+    <button id="apiKeySubmit">Save keys</button>
+  </div>
+</div>
+
+<script>
+// State management
+let corrections = [];
+let currentIndex = -1;
+let undoStack = [];
+let selectedText = '';
+let selectedRange = null;
+let selectionMode = false;
+let runLog = [];
+let currentAbortController = null;
+let loadingTipTimer = null;
+let loadingTipIndex = 0;
+let lastRuns = [];
+let originalDocumentText = '';
+const keyState = {
+  openai: { source: 'none', externalPath: null },
+  gemini: { source: 'none', externalPath: null }
+};
+const SESSION_STORAGE_KEY = 'modernEditorSession_v1';
+const SESSION_VERSION = 1;
+const DEFAULT_SAMPLE_TEXT = window.DEFAULT_SAMPLE_TEXT || '';
+const DEFAULT_SAMPLE_TEXT_TRIMMED = window.DEFAULT_SAMPLE_TEXT_TRIMMED || DEFAULT_SAMPLE_TEXT.trim();
+const PROMPT_TEMPLATES = window.PROMPT_TEMPLATES || {};
+const SAMPLE_COMMENTS_FALLBACK = {
+  corrections: [
+    {
+      original: "This paper presents an comprehensive overview of recent advancements in natural language processing.",
+      corrected: "This paper presents a comprehensive overview of recent advancements in natural language processing.",
+      explanation: "Article usage (a vs. an).",
+      type: "grammar"
+    },
+    {
+      original: "We will discuss the various aproaches that has been developed in the past decade.",
+      corrected: "We will discuss the various approaches that have been developed in the past decade.",
+      explanation: "Spelling ('aproaches' -> 'approaches') and subject-verb agreement with plural noun 'approaches'.",
+      type: "grammar"
+    },
+    {
+      original: "The field have grown exponentially, with new models being released on a regular bases.",
+      corrected: "The field has grown exponentially, with new models being released on a regular basis.",
+      explanation: "Subject-verb agreement ('field has') and correct word form ('basis' instead of 'bases' in this context).",
+      type: "grammar"
+    },
+    {
+      original: "Its important to understand these developments for anyone working in the field.",
+      corrected: "It's important to understand these developments for anyone working in the field.",
+      explanation: "Apostrophe use in contraction ('It's' vs 'Its').",
+      type: "grammar"
+    },
+    {
+      original: "In this study, we examined 50 different papers published between 2020-2023.",
+      corrected: "In this study, we examined 50 different papers published between 2020 and 2023.",
+      explanation: "Correct preposition pair 'between ... and ...'.",
+      type: "grammar"
+    },
+    {
+      original: "The data shows that transformer-based models is dominating the landscape.",
+      corrected: "The data shows that transformer-based models are dominating the landscape.",
+      explanation: "Subject-verb agreement with plural noun 'models'.",
+      type: "grammar"
+    },
+    {
+      original: "Each experiment were carefully designed to test specific aspects of model performance.",
+      corrected: "Each experiment was carefully designed to test specific aspects of model performance.",
+      explanation: "Subject-verb agreement with singular subject 'each experiment'.",
+      type: "grammar"
+    },
+    {
+      original: "In conclusion, this study have shown that the landscape of NLP is rapidly evolving.",
+      corrected: "In conclusion, this study has shown that the landscape of NLP is rapidly evolving.",
+      explanation: "Subject-verb agreement with singular subject 'study'.",
+      type: "grammar"
+    },
+    {
+      original: "Future work should focus on developing more efficent models.",
+      corrected: "Future work should focus on developing more efficient models.",
+      explanation: "Spelling ('efficent' -> 'efficient').",
+      type: "grammar"
+    }
+  ]
+};
+  const LOADING_TIPS = Array.isArray(window.CUSTOM_LOADING_TIPS) && window.CUSTOM_LOADING_TIPS.length
+    ? window.CUSTOM_LOADING_TIPS
+    : [
+      'We only send your selection for Custom Ask; the surrounding text is read-only context.',
+      'Grammar/Style runs strip the LaTeX preamble and map corrections back to the original positions.',
+      'Thinking models (esp. Custom) can run for several minutes, especially on long documents you may need to wait 10 or even 15 minutes.',
+      'You can import structured JSON corrections to work fully offline.',
+      'Use Undo after accepting/rejecting to restore the prior state and correction positions.',
+      'Keyboard shortcuts: arrows to navigate, Enter to accept, Delete/Backspace to reject.',
+      'GPT-5-pro can get very expensive fast on long papers or with Python; watch token logs in the console.',
+      'Simplify works best on one–two paragraphs at a time; it returns three alternative rewrites with different lengths.',
+      'Proof check is intended for a single theorem and its proof; select both together before running it. You can also check proofs with custom asks',
+      'Custom / User Instructions let you define your own editing rule; you can set scope (selection vs full doc) and editing strength.',
+      'Use Import → Example to load a sample LaTeX document plus example corrections without calling the API.',
+      'You can paste JSON from ChatGPT into “Import Structured JSON” to visualize corrections without rerunning any model.',
+    'Free-form reviewer comments can be pasted into “Import Comments” and turned into structured, clickable edits.',
+    'The editor locks during a correction run; use Undo to restore the prior state and the full correction list.',
+    'Model choice in the menu trades off quality and cost; open the browser console to see token usage and estimated price per run.',
+    'LaTeX .tex files are supported: the preamble is stripped for analysis and corrections are mapped back to the original source.',
+    'Session snapshots are stored locally; you can also save or load a full session as a .json file from the menu.'
+  ];
+const PRESET_INSTRUCTIONS = [
+  {
+    key: 'grammar',
+    label: 'Careful grammar & spelling',
+    text: `Focus on grammar, spelling, punctuation, and obvious typos.
+Keep wording as close as possible to the original; avoid stylistic rewrites.
+Preserve all LaTeX commands and mathematical expressions.
+Only propose a correction when it is clearly better for correctness or clarity.`
+  },
+  {
+    key: 'style',
+    label: 'Academic style & clarity',
+    text: `Improve clarity, readability, and academic style while preserving the author’s voice and technical content.
+Prefer concise sentences, avoid repetition, and streamline long or convoluted phrases.
+Do not change the meaning or level of formality.
+Preserve LaTeX commands, citations, and sectioning.`
+  },
+  {
+    key: 'math',
+    label: 'Math & notation check',
+    text: `Carefully check mathematical notation and LaTeX formulas.
+Look for inconsistent symbols, missing definitions, mismatched indices, and obvious algebraic mistakes.
+If unsure a mathematical change is correct, do not change the math; instead, add a brief explanatory comment (set corrected equal to original and use the explanation field to note the concern).
+Do not change surrounding prose unless needed to fix a math-related issue.`
+  },
+  {
+    key: 'consistency',
+    label: 'Terminology & references',
+    text: `Check for consistent use of terminology, notation, and variable names.
+Ensure references to sections, figures, equations, and the literature are consistent and correctly formatted.
+Only propose corrections where there is a clear inconsistency; do not introduce new terminology.`
+  },
+  {
+    key: 'clarity',
+    label: 'Clarity for non-experts',
+    text: `Improve clarity for an informed but not expert reader.
+Break long, convoluted sentences when helpful and prefer plain language where possible.
+Add small local rephrasings when they improve comprehension, but do not add new content or delete technical details.`
+  }
+];
+const loadingTipEl = document.getElementById('loadingTip');
+const loadingSettings = document.getElementById('loadingSettings');
+function requirePromptHelper(fn, name) {
+  if (typeof fn !== 'function') {
+    throw new Error(`Prompt helper "${name}" is missing. Ensure prompt_templates.js is included.`);
+  }
+  return fn;
+}
+const buildJsonSchema = requirePromptHelper(PROMPT_TEMPLATES.buildJsonSchema, 'buildJsonSchema');
+const generatePrompt = requirePromptHelper(PROMPT_TEMPLATES.generatePrompt, 'generatePrompt');
+const generateSimplificationPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateSimplificationPrompt, 'generateSimplificationPrompt');
+const generateProofCheckPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateProofCheckPrompt, 'generateProofCheckPrompt');
+const generateCustomAskPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateCustomAskPrompt, 'generateCustomAskPrompt');
+let sessionSaveTimer = null;
+let sessionDirty = false;
+
+function wireNewTabLinks() {
+  const links = document.querySelectorAll('a[data-new-tab="true"]');
+  links.forEach(link => {
+    if (link.dataset.newTabWired === 'true') return;
+    link.dataset.newTabWired = 'true';
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const href = link.getAttribute('href');
+      if (!href) return;
+      const newWindow = window.open(href, '_blank');
+      if (newWindow) {
+        newWindow.opener = null;
+      }
+    });
+  });
+}
+
+// DOM elements
+const undoBtn = document.getElementById('undoBtn');
+const documentInput = document.getElementById('documentInput');
+const highlightOverlay = document.getElementById('highlightOverlay');
+const mainContent = document.getElementById('mainContent');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const navInfo = document.getElementById('navInfo');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingText = document.getElementById('loadingText');
+const importOptionsBtn = document.getElementById('importOptionsBtn');
+const importChoiceModal = document.getElementById('importChoiceModal');
+const importChoiceOverlay = document.getElementById('importChoiceOverlay');
+const importChoiceClose = document.getElementById('importChoiceClose');
+const importStructuredBtn = document.getElementById('importStructuredBtn');
+const importUnstructuredBtn = document.getElementById('importUnstructuredBtn');
+const importExampleBtn = document.getElementById('importExampleBtn');
+const lastRunOverlay = document.createElement('div');
+lastRunOverlay.className = 'modal-overlay';
+lastRunOverlay.id = 'lastRunOverlay';
+const lastRunModal = document.createElement('div');
+lastRunModal.className = 'summary-modal';
+lastRunModal.id = 'lastRunModal';
+const lastRunClose = document.createElement('button');
+lastRunClose.className = 'summary-close';
+lastRunClose.textContent = '×';
+const lastRunTitle = document.createElement('h2');
+lastRunTitle.textContent = 'Last Prompt & Response';
+const lastRunBody = document.createElement('div');
+lastRunBody.className = 'summary-section';
+lastRunModal.appendChild(lastRunClose);
+lastRunModal.appendChild(lastRunTitle);
+lastRunModal.appendChild(lastRunBody);
+document.body.appendChild(lastRunOverlay);
+document.body.appendChild(lastRunModal);
+const ruleSelect = document.getElementById('ruleSelect');
+const simplificationModal = document.getElementById('simplificationModal');
+const simplificationOriginal = document.getElementById('simplificationOriginal');
+const simplificationOptions = document.getElementById('simplificationOptions');
+const simplificationModalClose = document.getElementById('simplificationModalClose');
+const simplificationOverlay = document.getElementById('simplificationOverlay');
+const summaryModal = document.getElementById('summaryModal');
+const summaryContent = document.getElementById('summaryContent');
+const summaryClose = document.getElementById('summaryClose');
+const summaryModalHeader = summaryModal ? summaryModal.querySelector('h2') : null;
+const modalOverlay = document.getElementById('modalOverlay');
+const apiKeyModal = document.getElementById('apiKeyModal');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
+const apiKeySubmit = document.getElementById('apiKeySubmit');
+const apiKeySkip = document.getElementById('apiKeySkip');
+const apiKeySourcesNote = document.getElementById('apiKeySourcesNote');
+const manageKeysBtn = document.getElementById('manageKeysBtn');
+const apiStatusBar = document.getElementById('apiStatusBar');
+const apiStatusText = document.getElementById('apiStatusText');
+const apiStatusManageBtn = document.getElementById('apiStatusManageBtn');
+const openaiKeyInfoText = document.getElementById('openaiKeyInfoText');
+const geminiKeyInfoText = document.getElementById('geminiKeyInfoText');
+const aboutModal = document.getElementById('aboutModal');
+const aboutClose = document.getElementById('aboutClose');
+const aboutOverlay = document.getElementById('aboutOverlay');
+const fileModal = document.getElementById('fileModal');
+const fileClose = document.getElementById('fileClose');
+const fileOverlay = document.getElementById('fileOverlay');
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileSelectBtn = document.getElementById('fileSelectBtn');
+const sessionFileInput = document.getElementById('sessionFileInput');
+const selectionActions = document.getElementById('selectionActions');
+const simplifyBtn = document.getElementById('simplifyBtn');
+const proofBtn = document.getElementById('proofBtn');
+const diffOverlay = document.getElementById('diffOverlay');
+const diffModal = document.getElementById('diffModal');
+const diffContent = document.getElementById('diffContent');
+const diffDownloadBtn = document.getElementById('diffDownloadBtn');
+const diffDismissBtn = document.getElementById('diffDismissBtn');
+const diffClose = document.getElementById('diffClose');
+const customAskInput = document.getElementById('customAskInput');
+const customAskBtn = document.getElementById('customAskBtn');
+const customPromptBtn = document.getElementById('customPromptBtn');
+const customPromptOverlay = document.getElementById('customPromptOverlay');
+const customPromptModal = document.getElementById('customPromptModal');
+const customPromptClose = document.getElementById('customPromptClose');
+const customPresetContainer = document.getElementById('customPresetContainer');
+const customInstructionInput = document.getElementById('customInstructionInput');
+const customAggressiveness = document.getElementById('customAggressiveness');
+const customPromptReset = document.getElementById('customPromptReset');
+const customPromptCancel = document.getElementById('customPromptCancel');
+const customPromptRun = document.getElementById('customPromptRun');
+const customScopeRadios = document.querySelectorAll('input[name="customScope"]');
+let customPresetRendered = false;
+const customModelInfo = document.getElementById('customModelInfo');
+const cancelRequestBtn = document.getElementById('cancelRequestBtn');
+const copyBtn = document.getElementById('copyBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const styleSelect = document.getElementById('styleSelect');
+const modelFamilySelect = document.getElementById('modelFamilySelect');
+const toolWebSearchCheckbox = document.getElementById('toolWebSearch');
+const toolCodeInterpreterCheckbox = document.getElementById('toolCodeInterpreter');
+const languageSelect = document.getElementById('languageSelect');
+const correctionControls = document.getElementById('correctionControls');
+const rejectAllBtn = document.getElementById('rejectAllBtn');
+const jsonModal = document.getElementById('jsonModal');
+const jsonOverlay = document.getElementById('jsonOverlay');
+const jsonInput = document.getElementById('jsonInput');
+const jsonClose = document.getElementById('jsonClose');
+const jsonCancelBtn = document.getElementById('jsonCancelBtn');
+const jsonApplyBtn = document.getElementById('jsonApplyBtn');
+const commentsModal = document.getElementById('commentsModal');
+const commentsOverlay = document.getElementById('commentsOverlay');
+const commentsInput = document.getElementById('commentsInput');
+const commentsClose = document.getElementById('commentsClose');
+const commentsCancelBtn = document.getElementById('commentsCancelBtn');
+const commentsApplyBtn = document.getElementById('commentsApplyBtn');
+let highlightUpdateQueued = false;
+let isDraggingSummary = false;
+let summaryDragOffsetX = 0;
+let summaryDragOffsetY = 0;
+
+function buildSessionSnapshot() {
+  return {
+    version: SESSION_VERSION,
+    timestamp: Date.now(),
+    docText: documentInput.value || '',
+    originalDocumentText,
+    corrections,
+    currentIndex,
+    undoStack,
+    selection: selectionMode && selectedRange
+      ? { start: selectedRange.start, end: selectedRange.end }
+      : null,
+    prefs: {
+      modelFamily: modelFamilySelect ? modelFamilySelect.value : '',
+      language: languageSelect ? languageSelect.value : '',
+      style: styleSelect ? styleSelect.value : ''
+    }
+  };
+}
+
+function trySaveSessionSnapshot() {
+  if (!sessionDirty) return;
+  const snapshot = buildSessionSnapshot();
+  let payload = '';
+  try {
+    payload = JSON.stringify(snapshot);
+  } catch (err) {
+    console.warn('Unable to serialize session snapshot.', err);
+    sessionDirty = false;
+    return;
+  }
+
+  let saved = false;
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, payload);
+    saved = true;
+  } catch (err) {
+    console.warn('localStorage unavailable for session save.', err);
+  }
+
+  if (!saved) {
+    try {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, payload);
+      saved = true;
+    } catch (err) {
+      console.warn('sessionStorage unavailable for session save.', err);
+    }
+  }
+
+  if (!saved) {
+    console.warn('Failed to persist Modern Editor session.');
+  } else {
+    sessionDirty = false;
+  }
+}
+
+function scheduleSessionSave() {
+  sessionDirty = true;
+  if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(trySaveSessionSnapshot, 500);
+}
+
+function showApiKeyPromptIfMissing(error) {
+  const message = (error && error.message) ? String(error.message).toLowerCase() : '';
+  if (message.includes('api key is missing')) {
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (apiKeyModal) {
+      apiKeyModal.style.display = 'block';
+      if (apiKeyInput) apiKeyInput.focus();
+    }
+  }
+}
+
+function clearSavedSession() {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch (err) {
+    // ignore
+  }
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch (err) {
+    // ignore
+  }
+  sessionDirty = false;
+}
+
+function getStoredSessionString() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  } catch (err) {
+    console.warn('localStorage unavailable for session restore.', err);
+  }
+  if (raw) return raw;
+  try {
+    return sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch (err) {
+    console.warn('sessionStorage unavailable for session restore.', err);
+    return null;
+  }
+}
+
+function sanitizeCorrectionsForDocument(correctionsArray, text) {
+  if (!Array.isArray(correctionsArray) || !text) return [];
+  const sanitized = [];
+  correctionsArray.forEach((corr) => {
+    if (!corr || typeof corr.original !== 'string' || !corr.position) return;
+    const start = Number(corr.position.start);
+    const end = Number(corr.position.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    if (start < 0 || end > text.length || start >= end) return;
+    const snippet = text.substring(start, end);
+    if (snippet !== corr.original) return;
+    sanitized.push(corr);
+  });
+  return sanitized;
+}
+
+function applySessionSnapshot(snapshot, options = {}) {
+  const { skipSaving = false } = options;
+  resetState({ skipSave: true });
+  documentInput.value = snapshot.docText || '';
+  originalDocumentText = snapshot.originalDocumentText || '';
+  if (!originalDocumentText && documentInput.value) {
+    originalDocumentText = documentInput.value;
+  }
+  const docText = documentInput.value;
+  corrections = sanitizeCorrectionsForDocument(snapshot.corrections || [], docText);
+  if (!corrections.length) {
+    currentIndex = -1;
+  } else if (typeof snapshot.currentIndex === 'number' && snapshot.currentIndex >= 0 && snapshot.currentIndex < corrections.length) {
+    currentIndex = snapshot.currentIndex;
+  } else {
+    currentIndex = 0;
+  }
+  undoStack = Array.isArray(snapshot.undoStack) ? snapshot.undoStack : [];
+
+  if (snapshot.prefs) {
+    if (snapshot.prefs.modelFamily && modelFamilySelect) {
+      modelFamilySelect.value = snapshot.prefs.modelFamily;
+    }
+    if (snapshot.prefs.language && languageSelect) {
+      languageSelect.value = snapshot.prefs.language;
+    }
+    if (snapshot.prefs.style && styleSelect) {
+      styleSelect.value = snapshot.prefs.style;
+    }
+  }
+  updateApiStatusUI();
+
+  const sel = snapshot.selection;
+  if (sel && typeof sel.start === 'number' && typeof sel.end === 'number' && sel.start >= 0 && sel.end <= docText.length && sel.start < sel.end) {
+    selectionMode = true;
+    selectedRange = { start: sel.start, end: sel.end };
+    selectedText = docText.substring(sel.start, sel.end);
+  } else {
+    selectionMode = false;
+    selectedRange = null;
+    selectedText = '';
+  }
+
+  if (corrections.length) {
+    documentInput.readOnly = true;
+    documentInput.classList.add('locked');
+  } else {
+    documentInput.readOnly = false;
+    documentInput.classList.remove('locked');
+  }
+
+  updateHighlightOverlay();
+  if (corrections.length && currentIndex >= 0) {
+    updateActiveCorrection();
+    focusEditorForShortcuts();
+  } else {
+    updateNavigation();
+  }
+
+  if (skipSaving) {
+    sessionDirty = false;
+  } else {
+    sessionDirty = true;
+    scheduleSessionSave();
+  }
+}
+
+function restoreSessionFromStorage() {
+  const raw = getStoredSessionString();
+  if (!raw) return false;
+
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(raw);
+  } catch (err) {
+    console.warn('Stored session is corrupted.', err);
+    return false;
+  }
+  if (!snapshot || snapshot.version !== SESSION_VERSION) {
+    return false;
+  }
+
+  const shouldRestore = confirm('Restore your last Modern Editor session?');
+  if (!shouldRestore) return false;
+
+  applySessionSnapshot(snapshot, { skipSaving: true });
+  return true;
+}
+
+function hasMeaningfulContent() {
+  const textValue = documentInput && documentInput.value ? documentInput.value.trim() : '';
+  if (!textValue) return corrections.length > 0;
+  if (textValue === DEFAULT_SAMPLE_TEXT_TRIMMED && !sessionDirty && corrections.length === 0) {
+    return false;
+  }
+  return true;
+}
+
+function confirmDiscardCurrentWork() {
+  if (!hasMeaningfulContent()) return true;
+  return confirm('Discard the current document and any pending corrections? This cannot be undone.');
+}
+
+function handleBeforeUnload(e) {
+  if (!hasMeaningfulContent()) return;
+  if (!sessionDirty && corrections.length === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
+}
+
+function downloadCurrentSessionSnapshot() {
+  const snapshot = buildSessionSnapshot();
+  let payload = '';
+  try {
+    payload = JSON.stringify(snapshot, null, 2);
+  } catch (err) {
+    alert('Failed to serialize session: ' + err.message);
+    return;
+  }
+  const blob = new Blob([payload], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'modern-editor-session.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function handleSessionFileSelection(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const snapshot = JSON.parse(ev.target.result);
+      if (!snapshot || snapshot.version !== SESSION_VERSION) {
+        alert('This file is not a valid Modern Editor session.');
+        return;
+      }
+      applySessionSnapshot(snapshot);
+      alert('Session loaded successfully.');
+    } catch (err) {
+      alert('Failed to load session: ' + err.message);
+    }
+  };
+  reader.onerror = () => {
+    alert('Could not read the selected session file.');
+  };
+  reader.readAsText(file);
+  sessionFileInput.value = '';
+}
+
+window.addEventListener('beforeunload', handleBeforeUnload);
+
+// Hamburger elements
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const hamburgerMenu = document.getElementById('hamburgerMenu');
+const menuClose = document.getElementById('menuClose');
+const menuOverlay = document.getElementById('menuOverlay');
+const helpBtn = document.getElementById('helpBtn');
+const newDocBtn = document.getElementById('newDocBtn');
+const analyzeGrammarBtn = document.getElementById('analyzeGrammarBtn');
+const analyzeStyleBtn = document.getElementById('analyzeStyleBtn');
+const saveSessionBtn = document.getElementById('saveSessionBtn');
+const loadSessionBtn = document.getElementById('loadSessionBtn');
+const lastRunLogBtn = document.getElementById('lastRunLogBtn');
+const downloadDiffBtn = document.getElementById('downloadDiffBtn');
+const viewDiffBtn = document.getElementById('viewDiffBtn');
+
+function focusEditorForShortcuts() {
+  if (!documentInput || !corrections.length) return;
+  const activeEl = document.activeElement;
+  const neutralTargets = [null, document.body, analyzeGrammarBtn, analyzeStyleBtn];
+  if (!activeEl || neutralTargets.includes(activeEl)) {
+    documentInput.focus();
+  }
+}
+
+
+// Popover elements
+const suggestionPopover = document.getElementById('suggestionPopover');
+const popoverExplanation = document.getElementById('popoverExplanation');
+const popoverOriginal = document.getElementById('popoverOriginal');
+const popoverCorrected = document.getElementById('popoverCorrected');
+const popoverEditBtn = document.getElementById('popoverEditBtn');
+const popoverAcceptBtn = document.getElementById('popoverAcceptBtn');
+const popoverRejectBtn = document.getElementById('popoverRejectBtn');
+
+// Hamburger menu events
+hamburgerBtn.addEventListener('click', openHamburgerMenu);
+menuClose.addEventListener('click', closeHamburgerMenu);
+menuOverlay.addEventListener('click', closeHamburgerMenu);
+
+styleSelect.addEventListener('change', () => {
+  // Update the hidden main selector if it's a style rule
+  const rule = window.WRITING_RULES[styleSelect.value];
+  if (rule && rule.type === 'style') {
+    ruleSelect.value = styleSelect.value;
+  }
+});
+
+helpBtn.addEventListener('click', () => {
+  closeHamburgerMenu();
+  showAboutModal();
+});
+
+undoBtn.addEventListener('click', handleUndo);
+
+newDocBtn.addEventListener('click', () => {
+  if (!confirmDiscardCurrentWork()) return;
+  closeHamburgerMenu();
+  showFileModal();
+});
+
+analyzeGrammarBtn.addEventListener('click', () => {
+  closeHamburgerMenu();
+  ruleSelect.value = 'grammar';
+  handleAnalysis();
+});
+
+analyzeStyleBtn.addEventListener('click', () => {
+  closeHamburgerMenu();
+  const selectedStyle = styleSelect.value;
+  if (selectedStyle) {
+    ruleSelect.value = selectedStyle;
+    handleAnalysis();
+  }
+});
+
+if (saveSessionBtn) {
+  saveSessionBtn.addEventListener('click', () => {
+    closeHamburgerMenu();
+    downloadCurrentSessionSnapshot();
+  });
+}
+
+if (loadSessionBtn) {
+  loadSessionBtn.addEventListener('click', () => {
+    if (!confirmDiscardCurrentWork()) return;
+    closeHamburgerMenu();
+    if (sessionFileInput) {
+      sessionFileInput.value = '';
+      sessionFileInput.click();
+    }
+  });
+}
+
+
+function openHamburgerMenu() {
+  hamburgerMenu.classList.add('open');
+  menuOverlay.classList.add('visible');
+  
+  // If current rule is a style, update style selector
+  if (ruleSelect && ruleSelect.value && window.WRITING_RULES) {
+    const currentRule = window.WRITING_RULES[ruleSelect.value];
+    if (currentRule && currentRule.type === 'style' && styleSelect) {
+      styleSelect.value = ruleSelect.value;
+    }
+  }
+}
+
+function closeHamburgerMenu() {
+  hamburgerMenu.classList.remove('open');
+  menuOverlay.classList.remove('visible');
+}
+
+window.WRITING_RULES = window.WRITING_RULES || {};
+if (!window.WRITING_RULES.grammar) {
+  window.WRITING_RULES.grammar = {
+    name: "Grammar & Spelling",
+    description: "Check for grammatical errors and spelling mistakes",
+    type: "grammar"
+  };
+}
+
+// Model families we expose in the UI
+const MODEL_FAMILIES = {
+  'thinking-heavy': { provider: 'openai', model: 'gpt-5.1',     label: 'GPT-5.1 (thinking-heavy)' },
+  thinking:         { provider: 'openai', model: 'gpt-5.1',     label: 'GPT-5.1 (thinking)' },
+  'thinking-min':   { provider: 'openai', model: 'gpt-5.1',     label: 'GPT-5.1 (minimal thinking)' },
+  'no-reasoning':   { provider: 'openai', model: 'gpt-5.1',     label: 'GPT-5.1 (no reasoning)', noReason: true },
+  pro:              { provider: 'openai', model: 'gpt-5-pro',   label: 'GPT-5-pro (Expensive!)' },
+  mini:             { provider: 'openai', model: 'gpt-4.1-mini',label: 'GPT-4.1-mini' },
+  gemini_flash:     { provider: 'gemini', model: 'models/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Google)' },
+  gemini_pro:       { provider: 'gemini', model: 'models/gemini-2.5-pro',   label: 'Gemini 2.5 Pro (Google)' }
+};
+
+// Optional pricing table (per 1K tokens). Set window.OPENAI_PRICING to override.
+const DEFAULT_PRICING = {
+  'gpt-5.1':     { input: 0.00125, output: 0.01 },
+  'gpt-5-pro':   { input: 0.015,   output: 0.12 },
+  'gpt-4.1-mini':{ input: 0.0004,  output: 0.0016 }
+};
+
+// Reasoning defaults per task when using GPT-5.1
+const DEFAULT_REASONING_BY_TYPE = {
+  grammar: 'low',
+  style: 'medium',
+  simplify: 'high',
+  proof: 'high'
+};
+
+// Initial setup
+document.addEventListener('DOMContentLoaded', async () => {
+  // Check for API key (await to allow optional external key scripts to load)
+  await checkApiKey();
+  
+  loadRules();
+  wireNewTabLinks();
+
+  modelFamilySelect.value    = localStorage.getItem('modelFamily') || 'thinking-min';
+  languageSelect.value       = localStorage.getItem('languagePref') || 'en-US';
+  styleSelect.value          = localStorage.getItem('stylePref')    || 'academic-style';
+  updateApiStatusUI();
+  updateApiKeyInfoUI();
+
+  // Restore tool prefs
+  if (toolWebSearchCheckbox) {
+    const savedWeb = localStorage.getItem('toolsWebSearch');
+    toolWebSearchCheckbox.checked = savedWeb === '1';
+    if (savedWeb === null) {
+      toolWebSearchCheckbox.checked = false;
+    }
+  }
+  if (toolCodeInterpreterCheckbox) {
+    const savedCI = localStorage.getItem('toolsCodeInterpreter');
+    toolCodeInterpreterCheckbox.checked = savedCI === '1';
+  }
+
+  modelFamilySelect.addEventListener('change', () => {
+    localStorage.setItem('modelFamily', modelFamilySelect.value);
+    refreshToolAvailability();
+    updateApiStatusUI();
+  });
+  languageSelect.addEventListener('change', () =>
+    localStorage.setItem('languagePref', languageSelect.value)
+  );
+  styleSelect.addEventListener('change', () =>
+    localStorage.setItem('stylePref', styleSelect.value)
+  );
+  if (toolWebSearchCheckbox) {
+    toolWebSearchCheckbox.addEventListener('change', () =>
+      localStorage.setItem('toolsWebSearch', toolWebSearchCheckbox.checked ? '1' : '0')
+    );
+  }
+  if (toolCodeInterpreterCheckbox) {
+    toolCodeInterpreterCheckbox.addEventListener('change', () =>
+      localStorage.setItem('toolsCodeInterpreter', toolCodeInterpreterCheckbox.checked ? '1' : '0')
+    );
+  }
+  refreshToolAvailability();
+  if (manageKeysBtn) {
+    manageKeysBtn.addEventListener('click', () => {
+      if (apiKeyInput) apiKeyInput.value = window.OPENAI_API_KEY || '';
+      if (geminiApiKeyInput) geminiApiKeyInput.value = window.GEMINI_API_KEY || '';
+      apiKeyModal.style.display = 'block';
+    });
+  }
+  if (apiStatusManageBtn) {
+    apiStatusManageBtn.addEventListener('click', () => {
+      if (apiKeyInput) apiKeyInput.value = window.OPENAI_API_KEY || '';
+      if (geminiApiKeyInput) geminiApiKeyInput.value = window.GEMINI_API_KEY || '';
+      apiKeyModal.style.display = 'block';
+    });
+  }
+  if (apiStatusBar) {
+    apiStatusBar.addEventListener('click', () => {
+      if (apiKeyInput) apiKeyInput.value = window.OPENAI_API_KEY || '';
+      if (geminiApiKeyInput) geminiApiKeyInput.value = window.GEMINI_API_KEY || '';
+      apiKeyModal.style.display = 'block';
+    });
+  }
+  
+  const restored = restoreSessionFromStorage();
+  if (!restored) {
+    documentInput.value = DEFAULT_SAMPLE_TEXT;
+    originalDocumentText = documentInput.value;
+    updateHighlightOverlay();
+  }
+
+  // Sync scroll
+  documentInput.addEventListener('scroll', () => {
+    highlightOverlay.scrollTop = documentInput.scrollTop;
+    highlightOverlay.scrollLeft = documentInput.scrollLeft;
+  });
+
+  documentInput.addEventListener('input', () => {
+      // If user types/pastes, clear corrections and resync selection
+      if (corrections.length > 0) {
+          resetState();
+      }
+      handleTextSelection(); // recompute selection state
+      updateHighlightOverlay(); // force immediate overlay refresh to avoid ghost/blurry text after paste
+      scheduleSessionSave();
+  });
+  
+  // Handle text selection
+  documentInput.addEventListener('mouseup', handleTextSelection);
+  documentInput.addEventListener('keyup', handleTextSelection);
+    updateNavigation();
+
+  if (summaryModalHeader) {
+    summaryModalHeader.addEventListener('mousedown', startSummaryDrag);
+    summaryModalHeader.addEventListener('touchstart', startSummaryDrag, { passive: false });
+  }
+
+  if (importOptionsBtn) {
+    importOptionsBtn.addEventListener('click', openImportChoice);
+  }
+
+  if (importChoiceClose) importChoiceClose.addEventListener('click', closeImportChoice);
+  if (importChoiceOverlay) importChoiceOverlay.addEventListener('click', closeImportChoice);
+
+  if (importStructuredBtn) {
+    importStructuredBtn.addEventListener('click', () => {
+      closeImportChoice();
+      openJsonModal();
+    });
+  }
+
+  if (importUnstructuredBtn) {
+    importUnstructuredBtn.addEventListener('click', () => {
+      closeImportChoice();
+      openCommentsModal();
+    });
+  }
+
+  if (importExampleBtn) {
+    importExampleBtn.addEventListener('click', () => {
+      closeImportChoice();
+      handleExampleImport();
+    });
+  }
+
+  if (lastRunLogBtn) {
+    lastRunLogBtn.addEventListener('click', () => {
+      closeHamburgerMenu();
+      showLastRunModal();
+    });
+  }
+  if (downloadDiffBtn) {
+    downloadDiffBtn.addEventListener('click', () => {
+      closeHamburgerMenu();
+      downloadGlobalDiff();
+    });
+  }
+  if (viewDiffBtn) {
+    viewDiffBtn.addEventListener('click', () => {
+      closeHamburgerMenu();
+      showGlobalDiffModal();
+    });
+  }
+
+  if (lastRunClose) lastRunClose.addEventListener('click', hideLastRunModal);
+  lastRunOverlay.addEventListener('click', hideLastRunModal);
+
+  if (jsonClose) jsonClose.addEventListener('click', closeJsonModal);
+  if (jsonCancelBtn) jsonCancelBtn.addEventListener('click', closeJsonModal);
+  if (jsonOverlay) jsonOverlay.addEventListener('click', closeJsonModal);
+  if (jsonApplyBtn) jsonApplyBtn.addEventListener('click', handleJsonImport);
+
+  if (commentsClose) commentsClose.addEventListener('click', closeCommentsModal);
+  if (commentsCancelBtn) commentsCancelBtn.addEventListener('click', closeCommentsModal);
+  if (commentsOverlay) commentsOverlay.addEventListener('click', closeCommentsModal);
+  if (commentsApplyBtn) commentsApplyBtn.addEventListener('click', handleCommentsImport);
+});
+
+// Event Listeners
+prevBtn.addEventListener('click', () => navigateCorrections(-1));
+nextBtn.addEventListener('click', () => navigateCorrections(1));
+popoverAcceptBtn.addEventListener('click', () => acceptCorrection(currentIndex));
+popoverRejectBtn.addEventListener('click', () => rejectCorrection(currentIndex));
+simplificationModalClose.addEventListener('click', closeSimplificationModal);
+simplificationOverlay.addEventListener('click', closeSimplificationModal);
+summaryClose.addEventListener('click', closeSummaryModal);
+modalOverlay.addEventListener('click', closeSummaryModal);
+apiKeySubmit.addEventListener('click', saveApiKey);
+if (apiKeySkip) {
+  apiKeySkip.addEventListener('click', skipApiKey);
+}
+aboutClose.addEventListener('click', closeAboutModal);
+aboutOverlay.addEventListener('click', closeAboutModal);
+fileClose.addEventListener('click', closeFileModal);
+fileOverlay.addEventListener('click', closeFileModal);
+fileSelectBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', handleFileSelect);
+if (sessionFileInput) {
+  sessionFileInput.addEventListener('change', handleSessionFileSelection);
+}
+simplifyBtn.addEventListener('click', handleSimplification);
+proofBtn.addEventListener('click', handleProofCheck);
+customAskBtn.addEventListener('click', handleCustomAsk);
+const viewDiffShortcutBtn = document.getElementById('viewDiffShortcutBtn');
+if (viewDiffShortcutBtn) {
+  viewDiffShortcutBtn.addEventListener('click', showGlobalDiffModal);
+}
+const diffNewWindowBtn = document.getElementById('diffNewWindowBtn');
+if (diffNewWindowBtn) {
+  diffNewWindowBtn.addEventListener('click', showGlobalDiffInNewWindow);
+}
+if (customPromptBtn) {
+  customPromptBtn.addEventListener('click', openCustomPromptModal);
+}
+if (customPromptClose) customPromptClose.addEventListener('click', closeCustomPromptModal);
+if (customPromptCancel) customPromptCancel.addEventListener('click', closeCustomPromptModal);
+if (customPromptOverlay) customPromptOverlay.addEventListener('click', closeCustomPromptModal);
+if (customPromptReset) customPromptReset.addEventListener('click', resetCustomPromptModal);
+if (customPromptRun) customPromptRun.addEventListener('click', handleCustomPromptRun);
+cancelRequestBtn.addEventListener('click', abortInFlightRequest);
+rejectAllBtn.addEventListener('click', rejectAllCorrections);
+if (popoverEditBtn) {
+  popoverEditBtn.addEventListener('click', () => {
+    const correction = corrections[currentIndex];
+    if (!correction) return;
+    popoverCorrected.textContent = correction.corrected || '';
+    popoverCorrected.setAttribute('contenteditable', 'true');
+    popoverCorrected.focus();
+  });
+}
+if (diffDismissBtn) diffDismissBtn.addEventListener('click', hideDiffModal);
+if (diffClose) diffClose.addEventListener('click', hideDiffModal);
+if (diffOverlay) diffOverlay.addEventListener('click', hideDiffModal);
+if (diffDownloadBtn) {
+  diffDownloadBtn.addEventListener('click', () => {
+    downloadGlobalDiff();
+  });
+}
+copyBtn.addEventListener('click', () => {
+  // This line grabs the ENTIRE text from the editor, regardless of selection
+  navigator.clipboard.writeText(documentInput.value).then(() => {
+    const copyIcon = copyBtn.querySelector('.icon-copy');
+    const checkIcon = copyBtn.querySelector('.icon-check');
+
+    // Swap icons for feedback
+    copyIcon.style.display = 'none';
+    checkIcon.style.display = 'inline-block';
+
+    // Swap back after 2 seconds
+    setTimeout(() => {
+      copyIcon.style.display = 'inline-block';
+      checkIcon.style.display = 'none';
+    }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy text: ', err);
+    alert('Failed to copy text.');
+  });
+});
+
+// This listener is for the "Download" icon button
+downloadBtn.addEventListener('click', () => {
+  // This line also grabs the ENTIRE text from the editor
+  const text = documentInput.value;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'document.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// Drag and drop handlers
+dropZone.addEventListener('dragover', handleDragOver);
+dropZone.addEventListener('dragleave', handleDragLeave);
+dropZone.addEventListener('drop', handleDrop);
+
+document.addEventListener('keydown', (e) => {
+  // Check if we're editing the corrected text
+  if (document.activeElement === popoverCorrected) {
+    // Only allow normal typing, prevent our shortcuts
+    if (['Enter', 'Backspace', 'Delete', 'Escape', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      e.stopPropagation();
+      if (e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault();
+        popoverCorrected.blur(); // Exit editing
+      }
+    }
+    return;
+  }
+  
+  // Allow escape to always close things
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    hidePopover();
+    closeSimplificationModal();
+    closeAboutModal();
+    closeFileModal();
+    return;
+  }
+
+  // If focus is in an input/textarea/contenteditable (other than the corrected text field), do not hijack keys
+  const activeEl = document.activeElement;
+  const tag = activeEl ? activeEl.tagName : '';
+  const isEditableField = activeEl && (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    tag === 'BUTTON' ||
+    activeEl.isContentEditable
+  );
+  const isLockedEditor = activeEl === documentInput && documentInput.classList.contains('locked');
+  if (isEditableField && !isLockedEditor && activeEl !== popoverCorrected) {
+    return;
+  }
+
+  // Only intercept navigation/enter/delete when corrections are active
+  if (!corrections.length) return;
+
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    nextBtn.click();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    prevBtn.click();
+  } else if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    const correction = corrections[currentIndex];
+    if (correction) {
+      popoverCorrected.textContent = correction.corrected || '';
+      popoverCorrected.setAttribute('contenteditable', 'true');
+      popoverCorrected.focus();
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    acceptCorrection(currentIndex);
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    e.preventDefault();
+    rejectCorrection(currentIndex);
+  }
+});
+
+
+document.addEventListener('click', (e) => {
+    // GUARD CLAUSE: If we are in correction mode, do not allow
+    // a "click away" to hide the popover. The popover must persist.
+    if (corrections.length > 0) {
+        return;
+    }
+
+    // This logic now only runs when NOT in correction mode.
+    // It's for any other potential popovers or future features.
+    // We'll also simplify it slightly as its main job was for corrections.
+    if (currentIndex > -1 && !suggestionPopover.contains(e.target) && !e.target.closest('.suggestion')) {
+        hidePopover();
+        // Resetting index here is important for when the user clicks away
+        // from a suggestion instead of using the nav buttons.
+        currentIndex = -1; 
+        updateNavigation();
+    }
+});
+
+function isTrustedKeySource(src) {
+  if (typeof src !== 'string') return false;
+  const trimmed = src.trim();
+  if (!trimmed) return false;
+  // Block remote or scriptable schemes
+  if (/^(https?:|data:|javascript:|ftp:)/i.test(trimmed)) return false;
+  if (trimmed.startsWith('//')) return false;
+  return true; // allow relative, root-relative, or file paths
+}
+
+async function loadExternalKeyScripts() {
+  const sources = Array.isArray(window.OPENAI_KEY_PATHS) ? window.OPENAI_KEY_PATHS : [];
+  const safeSources = sources.filter(isTrustedKeySource);
+  const attempts = [];
+
+  for (const src of safeSources) {
+    if (!src) continue;
+    const loaded = await new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = false;
+      script.defer = false;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    attempts.push({ src, status: loaded ? 'loaded' : 'failed' });
+    if (loaded && window.OPENAI_API_KEY) {
+      keyState.openai.source = 'external-path';
+      keyState.openai.externalPath = src;
+      break;
+    }
+  }
+
+  if (sources.length && !safeSources.length) {
+    console.warn('Skipped external key sources because none passed validation.');
+  }
+  if (attempts.length) {
+    const summary = attempts.map(a => `${a.src}: ${a.status}`).join('; ');
+    console.log(`External key sources attempted: ${summary}`);
+    if (apiKeySourcesNote) {
+      apiKeySourcesNote.textContent = summary;
+    }
+  }
+
+  return attempts.some(a => a.status === 'loaded' && window.OPENAI_API_KEY);
+}
+
+async function loadExternalGeminiKeyScripts() {
+  const sources = Array.isArray(window.GEMINI_KEY_PATHS) ? window.GEMINI_KEY_PATHS : [];
+  const safeSources = sources.filter(isTrustedKeySource);
+  const attempts = [];
+
+  for (const src of safeSources) {
+    if (!src) continue;
+    const loaded = await new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = false;
+      script.defer = false;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    attempts.push({ src, status: loaded ? 'loaded' : 'failed' });
+    if (loaded && window.GEMINI_API_KEY) {
+      keyState.gemini.source = 'external-path';
+      keyState.gemini.externalPath = src;
+      break;
+    }
+  }
+
+  if (sources.length && !safeSources.length) {
+    console.warn('Skipped Gemini key sources because none passed validation.');
+  }
+  if (attempts.length) {
+    const summary = attempts.map(a => `${a.src}: ${a.status}`).join('; ');
+    console.log(`Gemini external key sources attempted: ${summary}`);
+    if (apiKeySourcesNote) {
+      const existing = apiKeySourcesNote.textContent || '';
+      const spacer = existing ? ' ' : '';
+      apiKeySourcesNote.textContent = `${existing}${spacer}Gemini sources: ${summary}`;
+    }
+  }
+
+  return attempts.some(a => a.status === 'loaded' && window.GEMINI_API_KEY);
+}
+
+async function checkApiKey() {
+  if (typeof window.OPENAI_API_KEY === 'undefined') {
+    window.OPENAI_API_KEY = '';
+  }
+  if (typeof window.GEMINI_API_KEY === 'undefined') {
+    window.GEMINI_API_KEY = '';
+  }
+
+  // Try external key scripts first (e.g., user-local path) if no key is set
+  if (!window.OPENAI_API_KEY) {
+    const loaded = await loadExternalKeyScripts();
+    if (!loaded) {
+      keyState.openai.externalPath = null;
+    }
+  }
+  if (!window.GEMINI_API_KEY) {
+    const loadedGemini = await loadExternalGeminiKeyScripts();
+    if (!loadedGemini) {
+      keyState.gemini.externalPath = null;
+    }
+  }
+
+  if (window.OPENAI_API_KEY && keyState.openai.source === 'none') {
+    keyState.openai.source = keyState.openai.externalPath ? 'external-path' : 'preloaded';
+  }
+  if (window.GEMINI_API_KEY && keyState.gemini.source === 'none') {
+    keyState.gemini.source = keyState.gemini.externalPath ? 'external-path' : 'preloaded';
+  }
+
+  // If still no key, prompt the user.
+  if (!window.OPENAI_API_KEY) {
+    apiKeyModal.style.display = 'block';
+    loadingOverlay.style.display = 'none'; // do not block the UI
+    loadingOverlay.style.background = 'rgba(255, 255, 248, 0.9)';
+    loadingText.style.display = 'block';
+  } else {
+    if (apiKeySourcesNote) {
+      apiKeySourcesNote.textContent = apiKeySourcesNote.textContent || 'API key loaded.';
+    }
+  }
+
+  updateApiStatusUI();
+  updateApiKeyInfoUI();
+}
+
+function saveApiKey() {
+  const openaiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+  const geminiKey = geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '';
+
+  if (typeof openaiKey === 'string') {
+    window.OPENAI_API_KEY = openaiKey;
+    keyState.openai.source = openaiKey ? 'modal' : 'none';
+  }
+  if (typeof geminiKey === 'string') {
+    window.GEMINI_API_KEY = geminiKey;
+    keyState.gemini.source = geminiKey ? 'modal' : 'none';
+  }
+
+  apiKeyModal.style.display = 'none';
+  loadingOverlay.style.display = 'none';
+  stopLoadingTips();
+  loadingOverlay.style.background = 'rgba(255, 255, 248, 0.9)';
+  loadingText.style.display = 'block';
+
+  updateApiStatusUI();
+  updateApiKeyInfoUI();
+}
+
+function skipApiKey() {
+  window.OPENAI_API_KEY = '';
+  keyState.openai.source = 'none';
+  apiKeyModal.style.display = 'none';
+  loadingOverlay.style.display = 'none';
+  stopLoadingTips();
+  loadingOverlay.style.background = 'rgba(255, 255, 248, 0.9)';
+  loadingText.style.display = 'block';
+
+  updateApiStatusUI();
+  updateApiKeyInfoUI();
+}
+
+function describeKey(source, hasKey) {
+  if (!hasKey) return 'No key configured';
+  if (source === 'modal') return 'Key present (direct input)';
+  if (source === 'external-path') return 'Key present (loaded from path)';
+  if (source === 'preloaded') return 'Key present (preloaded global)';
+  return 'Key present';
+}
+
+function updateApiKeyInfoUI() {
+  if (openaiKeyInfoText) {
+    openaiKeyInfoText.textContent = `OpenAI: ${describeKey(keyState.openai.source, !!window.OPENAI_API_KEY)}`;
+  }
+  if (geminiKeyInfoText) {
+    geminiKeyInfoText.textContent = `Gemini: ${describeKey(keyState.gemini.source, !!window.GEMINI_API_KEY)}`;
+  }
+}
+
+function updateApiStatusUI() {
+  if (!apiStatusBar || !apiStatusText) return;
+
+  const familyKey = (modelFamilySelect && modelFamilySelect.value) || 'thinking';
+  const familyCfg = MODEL_FAMILIES[familyKey] || MODEL_FAMILIES.thinking;
+  const provider = familyCfg.provider || 'openai';
+  const modelLabel = familyCfg.label || familyCfg.model || familyKey;
+
+  let status = '';
+  let ok = false;
+
+  if (provider === 'openai') {
+    const hasKey = !!window.OPENAI_API_KEY;
+    const src = keyState.openai.source;
+    ok = hasKey;
+    const srcLabel = src === 'modal' ? 'direct'
+      : src === 'external-path' ? 'path'
+      : src === 'preloaded' ? 'preloaded'
+      : 'none';
+    status = `Model: ${modelLabel} (OpenAI). Key: ${hasKey ? 'present' : 'missing'}${hasKey ? ` [${srcLabel}]` : ''}`;
+  } else if (provider === 'gemini') {
+    const hasKey = !!window.GEMINI_API_KEY;
+    const src = keyState.gemini.source;
+    ok = hasKey;
+    const srcLabel = src === 'modal' ? 'direct'
+      : src === 'external-path' ? 'path'
+      : src === 'preloaded' ? 'preloaded'
+      : 'none';
+    status = `Model: ${modelLabel} (Gemini). Key: ${hasKey ? 'present' : 'missing'}${hasKey ? ` [${srcLabel}]` : ''}`;
+  } else {
+    status = `Model: ${modelLabel}. Provider: ${provider}.`;
+    ok = true;
+  }
+
+  apiStatusText.textContent = status;
+  apiStatusBar.classList.toggle('status-ok', ok);
+  apiStatusBar.classList.toggle('status-missing', !ok);
+}
+
+  function loadRules() {
+    const selectors = [ ruleSelect, styleSelect ];
+    
+    selectors.forEach(selector => {
+      if (!selector) return;
+      selector.innerHTML = '';
+      
+      const isStyle = selector.id === 'styleSelect';
+      
+      Object.entries(window.WRITING_RULES)
+        .filter(([key, rule]) => {
+          if (!rule.name) return false;           // must have a name
+          if (isStyle) {
+            // in the “style” dropdown, only show entries that have a prompt
+            return typeof rule.prompt === 'string';
+          } else {
+            // in the main rules dropdown, skip any model‐config keys
+            return key !== 'models' && key !== 'models_free';
+          }
+        })
+        .forEach(([key, rule]) => {
+          const option = document.createElement('option');
+          option.value = key;
+          option.textContent = rule.name;
+          selector.appendChild(option);
+        });
+    });
+    
+    // pick the first style rule as the default
+    const firstStyle = Object.entries(window.WRITING_RULES)
+      .find(([_k, r]) => typeof r.prompt === 'string');
+    if (firstStyle) {
+      styleSelect.value = firstStyle[0];
+    }
+  }
+
+function resetState(options = {}) {
+    const skipSave = !!options.skipSave;
+    corrections = [];
+    currentIndex = -1;
+    documentInput.readOnly = false;
+    undoStack = [];
+    undoBtn.style.display = 'none';
+    documentInput.classList.remove('locked'); // <-- UNLOCK MOUSE EVENTS
+    hidePopover();
+    scheduleHighlightUpdate();
+    updateNavigation();
+    if (!skipSave) {
+        scheduleSessionSave();
+    }
+}
+
+function handleTextSelection() {
+    const hasSelection = documentInput.selectionStart !== documentInput.selectionEnd;
+  
+    if (hasSelection) {
+        selectionMode = true;
+        selectedText = documentInput.value.substring(documentInput.selectionStart, documentInput.selectionEnd);
+        selectedRange = {
+            start: documentInput.selectionStart,
+            end: documentInput.selectionEnd
+        };
+    } else {
+        selectionMode = false;
+        selectedText = '';
+        selectedRange = null;
+    }
+  
+    scheduleHighlightUpdate();
+    updateNavigation(); 
+}
+
+function clearUserSelection() {
+    // 1. Collapse the logical selection in the textarea
+    documentInput.setSelectionRange(documentInput.selectionStart, documentInput.selectionStart);
+
+    // 2. Reset our application's selection state variables
+    selectionMode = false;
+    selectedText = '';
+    selectedRange = null;
+
+    // 3. Force the UI to update based on the now-cleared state
+    scheduleHighlightUpdate();
+    updateNavigation();
+}
+
+function getLanguageInstruction() {
+    const languageSelect = document.getElementById('languageSelect');
+    const selectedOption = languageSelect.options[languageSelect.selectedIndex];
+    const languageValue = selectedOption.value;
+    const languageText = selectedOption.text;
+
+    if (languageValue === 'other') {
+        return '';
+    }
+    return `The primary language of this document is ${languageText}.\n\n`;
+}
+
+function refreshToolAvailability() {
+  const family = modelFamilySelect ? modelFamilySelect.value : '';
+  const supportsTools = family === 'thinking' || family === 'thinking-min' || family === 'thinking-heavy';
+  [toolWebSearchCheckbox, toolCodeInterpreterCheckbox].forEach(el => {
+    if (!el) return;
+    el.disabled = !supportsTools;
+    const label = el.closest('label');
+    if (label) {
+      label.style.opacity = supportsTools ? '1' : '0.4';
+    }
+  });
+}
+
+function getModelForType(type) {
+  const family = (modelFamilySelect && modelFamilySelect.value) || 'thinking';
+  const selectedFamily = MODEL_FAMILIES[family] || MODEL_FAMILIES.thinking;
+  const model = selectedFamily.model;
+  const provider = selectedFamily.provider || 'openai';
+  let reasoningEffort = null;
+  if (provider === 'openai' && model === 'gpt-5.1') {
+    if (family === 'thinking-min') {
+      reasoningEffort = 'low';
+    } else if (family === 'thinking') {
+      reasoningEffort = DEFAULT_REASONING_BY_TYPE[type] || 'medium';
+    } else if (family === 'thinking-heavy') {
+      reasoningEffort = 'high';
+    } else if (family === 'no-reasoning') {
+      reasoningEffort = null;
+    }
+  }
+
+  return { model, provider, reasoningEffort, family };
+}
+
+function getToolsForModelConfig(modelConfig) {
+  const family = modelConfig && modelConfig.family;
+  const supportsTools = family === 'thinking' || family === 'thinking-min' || family === 'thinking-heavy';
+  if (!supportsTools) return [];
+
+  const tools = [];
+  if (toolWebSearchCheckbox && toolWebSearchCheckbox.checked) {
+    tools.push({ type: 'web_search' });
+  }
+  if (toolCodeInterpreterCheckbox && toolCodeInterpreterCheckbox.checked) {
+    tools.push({ type: 'code_interpreter', container: { type: 'auto' } });
+  }
+  return tools;
+}
+
+function getCurrentSettingsSummary(modelConfig) {
+  const modelLabel = MODEL_FAMILIES[modelConfig.family || 'thinking']?.label || modelConfig.model || '';
+  const langText = languageSelect && languageSelect.options[languageSelect.selectedIndex]
+    ? languageSelect.options[languageSelect.selectedIndex].text
+    : '';
+  const styleRule = styleSelect && styleSelect.value
+    ? (window.WRITING_RULES?.[styleSelect.value]?.name || styleSelect.value)
+    : '';
+  const toolStatus = [];
+  if (toolWebSearchCheckbox) {
+    toolStatus.push(`web: ${toolWebSearchCheckbox.checked ? 'on' : 'off'}`);
+  }
+  if (toolCodeInterpreterCheckbox) {
+    toolStatus.push(`python: ${toolCodeInterpreterCheckbox.checked ? 'on' : 'off'}`);
+  }
+  const parts = [];
+  if (modelLabel) parts.push(modelLabel);
+  if (langText) parts.push(`Lang: ${langText}`);
+  if (styleRule) parts.push(`Style: ${styleRule}`);
+  if (toolStatus.length) parts.push(`Tools: ${toolStatus.join(', ')}`);
+  return parts.join(' • ');
+}
+
+function extractLatexContent(text) {
+  // Check if it's a LaTeX document
+  if (!text.includes('\\begin{document}')) {
+    return { text, offset: 0 };
+  }
+  
+  const beginMatch = text.indexOf('\\begin{document}');
+  const endMatch = text.indexOf('\\end{document}');
+  const beginOffset = beginMatch + '\\begin{document}'.length;
+  
+  if (beginMatch !== -1 && endMatch !== -1) {
+    // Extract content between \begin{document} and \end{document}
+    return {
+      text: text.substring(beginOffset, endMatch),
+      offset: beginOffset
+    };
+  } else if (beginMatch !== -1) {
+    // Only \begin{document} found, take everything after it
+    return {
+      text: text.substring(beginOffset),
+      offset: beginOffset
+    };
+  }
+  
+  return { text, offset: 0 };
+}
+
+function handleUndo() {
+    if (undoStack.length === 0) return; // Nothing to undo
+
+    const lastAction = undoStack.pop();
+    
+    // Restore the text content to exactly what it was before the action
+    documentInput.value = lastAction.textBefore;
+
+    // Re-insert the correction object back into the corrections array at its original index
+    corrections.splice(lastAction.index, 0, lastAction.correction);
+
+    if (lastAction.lengthDiff && lastAction.lengthDiff !== 0) {
+        for (let i = lastAction.index + 1; i < corrections.length; i++) {
+            corrections[i].position.start -= lastAction.lengthDiff;
+            corrections[i].position.end -= lastAction.lengthDiff;
+        }
+    }
+    
+    // Set the current index to the newly restored correction
+    currentIndex = lastAction.index;
+
+    updateHighlightOverlay();
+    // Refresh the entire UI to reflect the undone state
+    updateActiveCorrection();
+
+    // If the undo stack is now empty, hide the button
+    if (undoStack.length === 0) {
+        undoBtn.style.display = 'none';
+    }
+
+    scheduleSessionSave();
+}
+
+function splitTextIntoChunks(text, maxChunkSize = 30000) {
+  const chunks = [];
+  const paragraphs = text.split(/\n\n+/);
+  let currentChunk = '';
+  
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length + 2 > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = paragraph;
+    } else {
+      currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  console.log(`Split text into ${chunks.length} chunks. Sizes:`, chunks.map(c => c.length));
+  
+  return chunks;
+}
+
+function extractStructuredJson(data) {
+  const unwrapCorrections = (payload) => {
+    if (!payload) return payload;
+    if (Array.isArray(payload)) return payload;
+    if (typeof payload === 'object' && Array.isArray(payload.corrections)) {
+      return payload.corrections;
+    }
+    return payload;
+  };
+
+  // Gemini path: candidates[].content.parts[].text
+  if (Array.isArray(data?.candidates)) {
+    for (const cand of data.candidates) {
+      const parts = (cand && cand.content && Array.isArray(cand.content.parts))
+        ? cand.content.parts
+        : [];
+      for (const part of parts) {
+        if (typeof part.text === 'string' && part.text.trim()) {
+          try {
+            const parsed = JSON.parse(part.text);
+            return unwrapCorrections(parsed);
+          } catch (err) {
+            // continue
+          }
+        }
+      }
+    }
+  }
+
+  // Prefer the aggregated output_text if present
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    try {
+      const parsed = JSON.parse(data.output_text);
+      return unwrapCorrections(parsed);
+    } catch (err) {
+      // fall through to other strategies
+    }
+  }
+
+  const outputs = Array.isArray(data?.output) ? data.output : [];
+  for (const item of outputs) {
+    if (item && item.output_json) {
+      return unwrapCorrections(item.output_json);
+    }
+    if (item && item.json) {
+      return unwrapCorrections(item.json);
+    }
+
+    const contents = Array.isArray(item?.content) ? item.content : [];
+    for (const part of contents) {
+      if (typeof part.text === 'string') {
+        try {
+          const parsed = JSON.parse(part.text);
+          return unwrapCorrections(parsed);
+        } catch (err) {
+          // continue
+        }
+      }
+    }
+  }
+
+  throw new Error('Analysis failed: model did not return JSON.');
+}
+
+async function callModelAPI(prompt, modelConfig, responseType, retryCount = 0) {
+  const provider = modelConfig?.provider || 'openai';
+  if (provider === 'gemini') {
+    return callGeminiAPI(prompt, modelConfig, responseType, retryCount);
+  }
+  return callOpenAIAPI(prompt, modelConfig, responseType, retryCount);
+}
+
+async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0) {
+  const key = window.OPENAI_API_KEY || '';
+  if (!key) {
+    throw new Error('API key is missing. Please ensure it is defined.');
+  }
+
+  const { model, reasoningEffort } = modelConfig || {};
+  const startTime = performance.now();
+  const startIso = new Date().toISOString();
+  console.log(`Run start: model ${model} (${modelConfig.family || 'n/a'}), type ${responseType}, ${startIso}`);
+
+  const jsonSchema = buildJsonSchema(responseType);
+
+  const payload = {
+    model,
+    input: prompt
+  };
+
+  if (jsonSchema) {
+    payload.text = {
+      format: {
+        type: 'json_schema',
+        name: jsonSchema.name || 'StructuredOutput',
+        schema: jsonSchema.schema || jsonSchema,
+        strict: jsonSchema.strict !== undefined ? jsonSchema.strict : true
+      }
+    };
+  }
+
+  const tools = getToolsForModelConfig(modelConfig);
+  if (tools && tools.length > 0) {
+    payload.tools = tools;
+    payload.tool_choice = 'auto';
+  }
+
+  // Only attach reasoning when the model supports it
+  if (reasoningEffort) {
+    payload.reasoning = { effort: reasoningEffort };
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${key}`,
+    // Beta header required for the Responses API + structured outputs
+    'OpenAI-Beta': 'responses=v1'
+  };
+
+  // Setup abort controller to support user cancellation
+  if (currentAbortController) {
+    try { currentAbortController.abort(); } catch (_) {}
+  }
+  const controller = new AbortController();
+  currentAbortController = controller;
+
+  let totalCost = null;
+  let costInfo = '';
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+
+        // Simple retry on rate limits
+        if (response.status === 429 && retryCount === 0) {
+          console.log('Rate limit hit, retrying in 30 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          return callOpenAIAPI(prompt, modelConfig, responseType, 1);
+        }
+
+        const message = error.error?.message || error.message || `API Error: ${response.status}`;
+        throw new Error(message);
+      }
+
+      const data = await response.json();
+
+      if (data.usage) {
+        const inputTokens = data.usage.input_tokens || 0;
+        const outputTokens = data.usage.output_tokens || 0;
+        const totalTokens = data.usage.total_tokens || (inputTokens + outputTokens);
+        const durationMs = performance.now() - startTime;
+        const durationSec = durationMs / 1000;
+
+        // Optional cost estimate if pricing is configured
+        const pricingTable = window.OPENAI_PRICING || DEFAULT_PRICING;
+        const price = pricingTable[model] || null;
+        if (price && (price.input || price.output)) {
+          const inputCost = price.input ? (inputTokens / 1000) * price.input : 0;
+          const outputCost = price.output ? (outputTokens / 1000) * price.output : 0;
+          totalCost = inputCost + outputCost;
+          costInfo = ` | Est. cost: ~$${totalCost.toFixed(4)} (input ~$${inputCost.toFixed(4)}, output ~$${outputCost.toFixed(4)})`;
+        }
+
+        console.log(
+          `%cOpenAI Usage%c Model: ${model} (${modelConfig.family || 'n/a'})\nInput Tokens: %c${inputTokens}%c\nOutput Tokens: %c${outputTokens}%c\nTotal Tokens: %c${totalTokens}%c\nDuration: %c${durationSec.toFixed(2)} s%c${costInfo}`,
+          'font-weight: bold; color: #1a1a1a; background-color: #cce5ff; padding: 2px 6px; border-radius: 3px;',
+          '',
+          'color: blue;',
+          '',
+          'color: green;',
+          '',
+          'color: purple; font-weight: bold;',
+          '',
+          'color: brown;',
+          ''
+        );
+
+        runLog.push({
+          start: startIso,
+          duration_ms: Math.round(durationMs),
+          duration_s: parseFloat(durationSec.toFixed(2)),
+          model,
+          family: modelConfig.family || 'n/a',
+          provider: 'openai',
+          type: responseType,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          cost: costInfo,
+          total_cost_usd: totalCost
+        });
+      }
+
+      const parsed = extractStructuredJson(data);
+      lastRuns.unshift({
+        prompt,
+        model,
+        provider: 'openai',
+        responseType,
+        start: startIso,
+        usage: {
+          input_tokens: data?.usage?.input_tokens || 0,
+          output_tokens: data?.usage?.output_tokens || 0,
+          total_tokens: data?.usage?.total_tokens || ((data?.usage?.input_tokens || 0) + (data?.usage?.output_tokens || 0)),
+          total_cost_usd: (typeof totalCost === 'number') ? totalCost : null
+        },
+        responseRaw: JSON.stringify(data, null, 2),
+        responseParsed: parsed
+      });
+      lastRuns = lastRuns.slice(0, 5);
+      return parsed;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      if (retryCount === 0 && error.message.includes('fetch')) {
+        console.log('Network error, retrying in 30 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        return callOpenAIAPI(prompt, modelConfig, responseType, 1);
+      }
+      throw error;
+    } finally {
+      if (currentAbortController === controller) {
+        currentAbortController = null;
+      }
+    }
+}
+
+async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0) {
+  const key = window.GEMINI_API_KEY || '';
+  if (!key) {
+    throw new Error('Gemini API key is missing. Please configure GEMINI_API_KEY.');
+  }
+
+  const { model } = modelConfig || {};
+  const startTime = performance.now();
+  const startIso = new Date().toISOString();
+  console.log(`Run start (Gemini): model ${model} (${modelConfig.family || 'n/a'}), type ${responseType}, ${startIso}`);
+
+  const schemaDef = buildJsonSchema(responseType);
+  const jsonSchema = schemaDef && (schemaDef.schema || schemaDef);
+
+  const body = {
+    contents: [
+      { parts: [{ text: prompt }] }
+    ]
+  };
+
+  if (jsonSchema) {
+    body.generationConfig = {
+      responseMimeType: 'application/json',
+      responseJsonSchema: jsonSchema
+    };
+  }
+
+  if (currentAbortController) {
+    try { currentAbortController.abort(); } catch (_) {}
+  }
+  const controller = new AbortController();
+  currentAbortController = controller;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = error.error?.message || error.message || `Gemini API error: ${response.status}`;
+      const schemaHint = /response[_]?schema|responseJsonSchema|responseMimeType/i.test(message);
+      const friendly = schemaHint
+        ? 'Gemini structured output was rejected. Try simplifying the JSON schema (fewer nested fields) or retrying with a smaller task.'
+        : message;
+      throw new Error(friendly);
+    }
+
+    const data = await response.json();
+
+    const usageMeta = data.usageMetadata || {};
+    const promptTokens = usageMeta.promptTokenCount || 0;
+    const candidateTokens = usageMeta.candidatesTokenCount || 0;
+    const totalTokens = usageMeta.totalTokenCount || (promptTokens + candidateTokens);
+    const durationMs = performance.now() - startTime;
+    const durationSec = durationMs / 1000;
+
+    if (promptTokens || candidateTokens || totalTokens) {
+      console.log(
+        `%cGemini Usage%c Model: ${model} (${modelConfig.family || 'n/a'})\nInput Tokens: %c${promptTokens}%c\nOutput Tokens: %c${candidateTokens}%c\nTotal Tokens: %c${totalTokens}%c\nDuration: %c${durationSec.toFixed(2)} s%c`,
+        'font-weight: bold; color: #1a1a1a; background-color: #ffe5cc; padding: 2px 6px; border-radius: 3px;',
+        '',
+        'color: blue;',
+        '',
+        'color: green;',
+        '',
+        'color: purple; font-weight: bold;',
+        '',
+        'color: brown;',
+        ''
+      );
+
+      runLog.push({
+        start: startIso,
+        duration_ms: Math.round(durationMs),
+        duration_s: parseFloat(durationSec.toFixed(2)),
+        model,
+        family: modelConfig.family || 'n/a',
+        provider: 'gemini',
+        type: responseType,
+        input_tokens: promptTokens,
+        output_tokens: candidateTokens,
+        total_tokens: totalTokens,
+        cost: '',
+        total_cost_usd: null
+      });
+    }
+
+    const parsed = extractStructuredJson(data);
+    lastRuns.unshift({
+      prompt,
+      model,
+      provider: 'gemini',
+      responseType,
+      start: startIso,
+      usage: {
+        input_tokens: promptTokens,
+        output_tokens: candidateTokens,
+        total_tokens: totalTokens,
+        total_cost_usd: null
+      },
+      responseRaw: JSON.stringify(data, null, 2),
+      responseParsed: parsed
+    });
+    lastRuns = lastRuns.slice(0, 5);
+    return parsed;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw error;
+    }
+    if (retryCount === 0 && error.message && error.message.includes('fetch')) {
+      console.log('Gemini network error, retrying in 30 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      return callGeminiAPI(prompt, modelConfig, responseType, 1);
+    }
+    throw error;
+  } finally {
+    if (currentAbortController === controller) {
+      currentAbortController = null;
+    }
+  }
+}
+
+async function handleAnalysis() {
+  // Capture selection (if any) before clearing UI state so selection-only analysis works
+  const selectionSnapshot = {
+    hasSelection: selectionMode && selectedRange && selectedText && selectedText.trim(),
+    range: selectedRange ? { ...selectedRange } : null,
+    text: selectedText
+  };
+  clearUserSelection();
+  const currentText = documentInput.value;
+  if (!currentText.trim()) {
+    alert('Please enter some text to analyze.');
+    return;
+  }
+  
+  const selectedRule = window.WRITING_RULES[ruleSelect.value];
+  if (!selectedRule) {
+    alert('Please select a rule.');
+    return;
+  }
+  if ((!originalDocumentText || originalDocumentText === DEFAULT_SAMPLE_TEXT || originalDocumentText === DEFAULT_SAMPLE_TEXT_TRIMMED) && currentText.trim()) {
+    originalDocumentText = currentText;
+  }
+
+  const modelConfig = getModelForType(selectedRule.type);
+  
+  resetState();
+  loadingOverlay.style.display = 'flex';
+  if (loadingSettings) {
+    loadingSettings.textContent = getCurrentSettingsSummary(modelConfig);
+  }
+  startLoadingTips();
+  
+  try {
+    const hasSelection = !!selectionSnapshot.hasSelection;
+    let selectionOffset = hasSelection && selectionSnapshot.range ? selectionSnapshot.range.start : 0;
+    let analysisText = currentText;
+    let contextText = '';
+
+    if (hasSelection) {
+      analysisText = selectionSnapshot.text;
+      // Provide a context window around the selection
+      const ctxStart = Math.max(0, selectionSnapshot.range.start - 2000);
+      const ctxEnd = Math.min(currentText.length, selectionSnapshot.range.end + 2000);
+      contextText = currentText.substring(ctxStart, ctxEnd);
+    } else {
+      // Extract LaTeX content if applicable for full-doc analysis
+      const latex = extractLatexContent(currentText);
+      analysisText = latex.text;
+      selectionOffset = latex.offset || 0;
+      contextText = '';
+    }
+    
+    // Split text into chunks
+    const chunks = splitTextIntoChunks(analysisText);
+    
+    const modelLabel = MODEL_FAMILIES[modelConfig.family]?.label || modelConfig.model;
+    loadingText.textContent = `Analyzing with ${selectedRule.name} (${modelLabel})...`;
+    
+    const allCorrections = [];
+    const responseType = selectedRule.type === 'grammar' ? 'grammar' : 'style';
+
+    // Process each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      loadingText.textContent = `Analyzing part ${i + 1} of ${chunks.length}...`;
+      
+      const prompt = generatePrompt(chunks[i], selectedRule, contextText);
+      const results = await callModelAPI(prompt, modelConfig, responseType);
+      
+      if (Array.isArray(results)) {
+        allCorrections.push(...results);
+      }
+      
+    }
+
+    // Map corrections to positions in the original document using sequential mapping
+    const { mapped, unmatched } = mapCorrectionsToPositions(allCorrections, analysisText, selectionOffset);
+    corrections = mapped;
+
+  if (corrections.length > 0) {
+    documentInput.readOnly = true;        // Prevent typing
+    documentInput.classList.add('locked'); // <-- LOCK MOUSE EVENTS
+    currentIndex = 0;
+    updateHighlightOverlay(); // render highlights immediately to reduce visual lag
+    updateActiveCorrection();
+  } else {
+        // No corrections found, so ensure it's not locked
+        documentInput.readOnly = false;
+        documentInput.classList.remove('locked');
+        highlightOverlay.innerHTML = escapeHtml(currentText) + `<div class="empty-state"><h3>No suggestions found</h3><p>Your document looks great!</p></div>`;
+    if (unmatched.length) {
+      alert(`Loaded ${mapped.length} corrections. ${unmatched.length} could not be placed. They might not match the document exactly.`);
+    }
+    }
+    scheduleSessionSave();
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Analysis cancelled by user.');
+    } else {
+      alert(`Analysis failed: ${error.message}`);
+      console.error(error);
+      showApiKeyPromptIfMissing(error);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    stopLoadingTips();
+    loadingText.textContent = 'Analyzing...';
+    if (loadingSettings) loadingSettings.textContent = '';
+  }
+} 
+
+async function handleSimplification() {
+  if (!selectedText || !selectedRange) return;
+  
+  loadingOverlay.style.display = 'flex';
+  if (loadingSettings) {
+    const modelConfig = getModelForType('simplify');
+    loadingSettings.textContent = getCurrentSettingsSummary(modelConfig);
+  }
+  startLoadingTips();
+  loadingText.textContent = 'Generating simplifications...';
+  
+  try {
+    const modelConfig = getModelForType('simplify');
+    const fullText = documentInput.value;
+    
+    // Get context (1000 chars before and after)
+    const contextStart = Math.max(0, selectedRange.start - 1000);
+    const contextEnd = Math.min(fullText.length, selectedRange.end + 1000);
+    const context = fullText.substring(contextStart, contextEnd);
+    
+    const prompt = generateSimplificationPrompt(selectedText, context);
+    const result = await callModelAPI(prompt, modelConfig, 'simplify');
+    
+    // Display simplification options in modal
+    displaySimplifications(result);
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Simplification cancelled by user.');
+    } else {
+      alert(`Simplification failed: ${error.message}`);
+      console.error(error);
+      showApiKeyPromptIfMissing(error);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    stopLoadingTips();
+  }
+}
+
+async function handleProofCheck() {
+  if (!selectedText || !selectedRange) return;
+  
+  loadingOverlay.style.display = 'flex';
+  if (loadingSettings) {
+    const modelConfig = getModelForType('proof');
+    loadingSettings.textContent = getCurrentSettingsSummary(modelConfig);
+  }
+  startLoadingTips();
+  loadingText.textContent = 'Checking proof validity...';
+  
+  try {
+    const modelConfig = getModelForType('proof');
+    const fullText = documentInput.value;
+    
+    const prompt = generateProofCheckPrompt(selectedText, fullText);
+    const result = await callModelAPI(prompt, modelConfig, 'proof');
+    
+    // Display proof check results in summary modal
+    displayProofCheck(result);
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Proof check cancelled by user.');
+    } else {
+      alert(`Proof check failed: ${error.message}`);
+      console.error(error);
+      showApiKeyPromptIfMissing(error);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    stopLoadingTips();
+  }
+}
+
+function displayProofCheck(result) {
+  let html = '';
+
+  html += `<div class="summary-section">
+    <h3>Validity</h3>
+    <p><strong>${result.is_valid ? 'Valid' : 'Invalid or Incomplete'}</strong></p>
+  </div>`;
+
+  const formatListItem = (item) => {
+    if (typeof item === 'object') {
+      return escapeHtml(JSON.stringify(item, null, 2));
+    }
+    return escapeHtml(String(item));
+  };
+
+  if (result.overall) {
+    html += `<div class="summary-section">
+      <h3>Overall Assessment</h3>
+      <p>${escapeHtml(result.overall)}</p>
+    </div>`;
+  }
+
+  // Use JSON.stringify for objects
+  if (result.issues && result.issues.length > 0) {
+    html += `<div class="summary-section">
+      <h3>Issues Found</h3>
+      <ul>${result.issues.map(item => `<li>${formatListItem(item)}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // Use JSON.stringify for objects
+  if (result.questions && result.questions.length > 0) {
+    html += `<div class="summary-section">
+      <h3>Clarifying Questions</h3>
+      <ul>${result.questions.map(item => `<li>${formatListItem(item)}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // Use JSON.stringify for objects
+  if (result.suggestions && result.suggestions.length > 0) {
+    html += `<div class="summary-section">
+      <h3>Suggestions</h3>
+      <ul>${result.suggestions.map(item => `<li>${formatListItem(item)}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // Update the summary modal title temporarily
+  const modalTitle = summaryModal.querySelector('h2');
+  const originalTitle = modalTitle.textContent;
+  modalTitle.textContent = 'Proof Validity Check';
+
+  centerSummaryModal();
+  summaryContent.innerHTML = html;
+  summaryModal.classList.add('visible');
+  modalOverlay.classList.add('visible');
+  
+  // Restore original title when modal closes
+  const restoreTitle = () => {
+    modalTitle.textContent = originalTitle;
+    modalOverlay.removeEventListener('click', restoreTitle);
+    summaryClose.removeEventListener('click', restoreTitle);
+  };
+  modalOverlay.addEventListener('click', restoreTitle);
+  summaryClose.addEventListener('click', restoreTitle);
+}
+
+function displaySimplifications(options) {
+  // Show the original selection safely
+  simplificationOriginal.textContent = selectedText || '';
+
+  // Clear any existing options
+  simplificationOptions.innerHTML = '';
+
+  const variants = [
+    { key: 'same_length', label: 'Same Length (Simpler Language)' },
+    { key: 'moderate',     label: 'Moderately Shorter (~30% reduction)' },
+    { key: 'concise',      label: 'Much Shorter (~50-60% reduction)' }
+  ];
+
+  variants.forEach((variant) => {
+    const text = options && options[variant.key];
+    if (!text) return;
+
+    const optionEl = document.createElement('div');
+    optionEl.className = 'simplification-option';
+    optionEl.dataset.text = text;
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'simplification-label';
+    labelEl.textContent = variant.label;
+
+    const textEl = document.createElement('div');
+    textEl.className = 'simplification-text';
+    textEl.textContent = text;
+
+    optionEl.appendChild(labelEl);
+    optionEl.appendChild(textEl);
+
+    optionEl.addEventListener('click', () => {
+      const newText = optionEl.dataset.text || '';
+      replaceSelectedText(newText);
+      closeSimplificationModal();
+    });
+
+    simplificationOptions.appendChild(optionEl);
+  });
+
+  // Show modal
+  simplificationModal.classList.add('visible');
+  simplificationOverlay.classList.add('visible');
+}
+
+function replaceSelectedText(newText) {
+  if (!selectedRange) return;
+  
+  const currentText = documentInput.value;
+  const before = currentText.substring(0, selectedRange.start);
+  const after = currentText.substring(selectedRange.end);
+  
+  documentInput.value = before + newText + after;
+  
+  clearUserSelection();
+  scheduleSessionSave();
+}
+
+function closeSimplificationModal() {
+  simplificationModal.classList.remove('visible');
+  simplificationOverlay.classList.remove('visible');
+}
+
+function closeSummaryModal() {
+  summaryModal.classList.remove('visible');
+  modalOverlay.classList.remove('visible');
+  centerSummaryModal();
+}
+
+function updateHighlightOverlay() {
+  highlightUpdateQueued = false;
+  const currentText = documentInput.value;
+  let html = '';
+  let lastPos = 0;
+  
+  // Only render selection overlay when not in correction mode
+  if (selectionMode && selectedRange && corrections.length === 0) {
+    html += escapeHtml(currentText.substring(0, selectedRange.start));
+    html += `<mark class="user-selection">${escapeHtml(currentText.substring(selectedRange.start, selectedRange.end))}</mark>`;
+    lastPos = selectedRange.end;
+  }
+  
+  // Then handle corrections
+  if (corrections.length > 0) {
+    corrections.forEach((correction, index) => {
+      html += escapeHtml(currentText.substring(lastPos, correction.position.start));
+      
+      const originalText = currentText.substring(correction.position.start, correction.position.end);
+      html += `<mark class="suggestion" data-index="${index}">${escapeHtml(originalText)}</mark>`;
+      
+      lastPos = correction.position.end;
+    });
+  }
+  
+  html += escapeHtml(currentText.substring(lastPos));
+  highlightOverlay.innerHTML = html;
+  highlightOverlay.classList.toggle('has-suggestions', corrections.length > 0);
+  documentInput.style.height = highlightOverlay.offsetHeight + 'px';
+}
+
+function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Compute word-level diff between original and corrected strings
+function diffWords(original, corrected) {
+  const origStr = typeof original === 'string' ? original : String(original || '');
+  const corrStr = typeof corrected === 'string' ? corrected : String(corrected || '');
+
+  const origTokens = origStr.split(/(\s+)/);
+  const corrTokens = corrStr.split(/(\s+)/);
+
+  const n = origTokens.length;
+  const m = corrTokens.length;
+
+  const dp = Array(n + 1);
+  for (let i = 0; i <= n; i++) {
+    dp[i] = new Array(m + 1).fill(0);
+  }
+
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = origTokens[i] === corrTokens[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const origParts = [];
+  const corrParts = [];
+  let i = 0, j = 0;
+
+  while (i < n && j < m) {
+    if (origTokens[i] === corrTokens[j]) {
+      origParts.push({ type: 'eq', token: origTokens[i] });
+      corrParts.push({ type: 'eq', token: corrTokens[j] });
+      i++; j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      origParts.push({ type: 'del', token: origTokens[i++] });
+    } else {
+      corrParts.push({ type: 'ins', token: corrTokens[j++] });
+    }
+  }
+  while (i < n) origParts.push({ type: 'del', token: origTokens[i++] });
+  while (j < m) corrParts.push({ type: 'ins', token: corrTokens[j++] });
+
+  function render(parts, side) {
+    return parts.map((p) => {
+      const t = p.token;
+      const escaped = escapeHtml(t);
+      if (/^\s+$/.test(t)) return escaped;
+      if (p.type === 'del' && side === 'orig') return `<span class="diff-del">${escaped}</span>`;
+      if (p.type === 'ins' && side === 'corr') return `<span class="diff-ins">${escaped}</span>`;
+      return escaped;
+    }).join('');
+  }
+
+  return {
+    originalHtml: render(origParts, 'orig'),
+    correctedHtml: render(corrParts, 'corr')
+  };
+}
+
+function scheduleHighlightUpdate() {
+  if (highlightUpdateQueued) return;
+  highlightUpdateQueued = true;
+  requestAnimationFrame(updateHighlightOverlay);
+}
+
+highlightOverlay.addEventListener('click', (e) => {
+  const mark = e.target.closest('.suggestion');
+  if (!mark) return;
+  const idx = Number(mark.dataset.index);
+  if (!Number.isFinite(idx)) return;
+  currentIndex = idx;
+  updateActiveCorrection({ scroll: false });
+});
+
+function abortInFlightRequest() {
+  if (currentAbortController) {
+    try { currentAbortController.abort(); } catch (_) {}
+    currentAbortController = null;
+  }
+  loadingOverlay.style.display = 'none';
+  stopLoadingTips();
+  loadingText.textContent = 'Analyzing...';
+}
+
+// Reset summary modal to centered position
+function centerSummaryModal() {
+  if (!summaryModal) return;
+  summaryModal.style.left = '50%';
+  summaryModal.style.top = '50%';
+  summaryModal.style.transform = 'translate(-50%, -50%)';
+}
+
+// Drag handlers for the summary modal
+function startSummaryDrag(e) {
+  if (!summaryModal || (e.button !== undefined && e.button !== 0)) return;
+  e.preventDefault();
+  const point = e.touches ? e.touches[0] : e;
+  const rect = summaryModal.getBoundingClientRect();
+  summaryModal.style.left = `${rect.left}px`;
+  summaryModal.style.top = `${rect.top}px`;
+  summaryModal.style.transform = 'none';
+  summaryDragOffsetX = point.clientX - rect.left;
+  summaryDragOffsetY = point.clientY - rect.top;
+  isDraggingSummary = true;
+  summaryModal.classList.add('dragging');
+  document.addEventListener('mousemove', onSummaryDrag);
+  document.addEventListener('mouseup', stopSummaryDrag);
+  document.addEventListener('touchmove', onSummaryDrag, { passive: false });
+  document.addEventListener('touchend', stopSummaryDrag);
+}
+
+function onSummaryDrag(e) {
+  if (!isDraggingSummary || !summaryModal) return;
+  const point = e.touches ? e.touches[0] : e;
+  e.preventDefault();
+  summaryModal.style.left = `${point.clientX - summaryDragOffsetX}px`;
+  summaryModal.style.top = `${point.clientY - summaryDragOffsetY}px`;
+}
+
+function stopSummaryDrag() {
+  if (!isDraggingSummary || !summaryModal) return;
+  isDraggingSummary = false;
+  summaryModal.classList.remove('dragging');
+  document.removeEventListener('mousemove', onSummaryDrag);
+  document.removeEventListener('mouseup', stopSummaryDrag);
+  document.removeEventListener('touchmove', onSummaryDrag);
+  document.removeEventListener('touchend', stopSummaryDrag);
+}
+
+// Export run log helper
+window.exportRunLog = function() {
+  const blob = new Blob([JSON.stringify(runLog, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'run-log.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// Handle pasted JSON corrections (manual import)
+function handleJsonImport() {
+  const raw = (jsonInput && jsonInput.value || '').trim();
+  if (!raw) {
+    alert('Please paste JSON corrections. If this import fails, try Unstructured Comments, or regenerate JSON in two steps: table (original, comment, correction) then JSON.');
+    return;
+  }
+
+  // Strip ```json fences if present
+  const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/, '');
+
+  const findSuspiciousBackslash = (s) => {
+    const m = s.match(/(^|[^\\])\\(?![\\\/"bfnrt]|u[0-9a-fA-F]{4})/);
+    if (!m) return -1;
+    return (m.index || 0) + (m[1] ? m[1].length : 0);
+  };
+
+  const autoEscapeBackslashes = (s) =>
+    s.replace(/\\(?![\\\/"bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    // Heuristic: try to auto-escape lone backslashes once
+    try {
+      const autoEscaped = autoEscapeBackslashes(cleaned);
+      parsed = JSON.parse(autoEscaped);
+      alert('Note: JSON had likely unescaped backslashes. Auto-escaped and parsed. Please review the imported corrections.');
+    } catch (e2) {
+      const idx = findSuspiciousBackslash(cleaned);
+      const snippet = idx >= 0
+        ? cleaned.slice(Math.max(0, idx - 60), Math.min(cleaned.length, idx + 60))
+        : '';
+      alert(
+        'Invalid JSON: ' + e.message +
+        (snippet ? '\n\nSuspicious backslash near:\n...' + snippet + '...' : '')
+      );
+      return;
+    }
+  }
+
+  let correctionsArray = Array.isArray(parsed?.corrections) ? parsed.corrections : null;
+  if (!correctionsArray) {
+    try {
+      // Try to unwrap a full API response (e.g., OpenAI/Gemini Responses API payload)
+      const extracted = extractStructuredJson(parsed);
+      if (Array.isArray(extracted?.corrections)) {
+        correctionsArray = extracted.corrections;
+      } else if (Array.isArray(extracted)) {
+        correctionsArray = extracted;
+      }
+    } catch (_) {
+      // ignore and fall through to error
+    }
+  }
+
+  if (!Array.isArray(correctionsArray)) {
+    alert('JSON must contain a "corrections" array. If this import fails, try Unstructured Comments, or regenerate JSON via a two-step prompt: first a table (original, comment, correction), then convert the table to the JSON shape.');
+    return;
+  }
+
+  const fullText = documentInput.value;
+  if (!fullText.trim()) {
+    alert('Document is empty; paste or load your text first. If import keeps failing, try Unstructured Comments or regenerate JSON via the two-step table→JSON approach.');
+    return;
+  }
+
+  // If no baseline is set yet, set it to the current text so Global Diff works
+  if (!originalDocumentText) {
+    originalDocumentText = fullText;
+  }
+
+  resetState();
+
+  const latex = extractLatexContent(fullText);
+  const analysisText = latex.text;
+  const baseOffset = latex.offset || 0;
+  const { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset);
+
+  if (!mapped.length) {
+    alert('No corrections could be mapped to this document.');
+    return;
+  }
+
+  if (unmatched.length) {
+    console.warn('Unmatched corrections:', unmatched.slice(0, 5));
+    alert(`Loaded ${mapped.length} corrections. ${unmatched.length} could not be matched.`);
+  }
+
+  corrections = mapped;
+  currentIndex = 0;
+  documentInput.readOnly = true;
+  documentInput.classList.add('locked');
+  updateHighlightOverlay(); // ensure highlights render immediately before showing popover
+  updateActiveCorrection();
+  scheduleSessionSave();
+
+  if (jsonModal) jsonModal.classList.remove('visible');
+  if (jsonOverlay) jsonOverlay.classList.remove('visible');
+}
+
+async function handleExampleImport() {
+  if (!confirmDiscardCurrentWork()) return;
+
+  loadingOverlay.style.display = 'flex';
+  startLoadingTips();
+  loadingText.textContent = 'Loading example corrections...';
+
+  try {
+    let data = null;
+    try {
+      const response = await fetch('sample_comments.json');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      data = await response.json();
+    } catch (err) {
+      console.warn('Falling back to embedded sample corrections:', err);
+      data = SAMPLE_COMMENTS_FALLBACK;
+    }
+
+    if (!data || !Array.isArray(data.corrections)) {
+      alert('Sample JSON is missing a "corrections" array.');
+      return;
+    }
+
+    resetState({ skipSave: true });
+    documentInput.value = DEFAULT_SAMPLE_TEXT || '';
+    originalDocumentText = documentInput.value;
+    clearUserSelection();
+
+    const latex = extractLatexContent(documentInput.value);
+    const analysisText = latex.text;
+    const baseOffset = latex.offset || 0;
+    const { mapped, unmatched } = mapCorrectionsToPositions(data.corrections, analysisText, baseOffset);
+
+    if (!mapped.length) {
+      alert('Could not map the sample corrections onto the sample document.');
+      return;
+    }
+
+    corrections = mapped;
+    currentIndex = 0;
+    documentInput.readOnly = true;
+    documentInput.classList.add('locked');
+    updateHighlightOverlay();
+    updateActiveCorrection();
+    scheduleSessionSave();
+
+    if (unmatched.length) {
+      console.warn('Unmatched sample corrections:', unmatched);
+    }
+  } catch (error) {
+    alert(`Failed to load sample corrections: ${error.message}`);
+    console.error(error);
+  } finally {
+    loadingOverlay.style.display = 'none';
+    stopLoadingTips();
+    loadingText.textContent = 'Analyzing...';
+  }
+}
+
+async function handleCommentsImport() {
+  if (!commentsInput) {
+    alert('Comments input is unavailable.');
+    return;
+  }
+
+  const commentsText = (commentsInput.value || '').trim();
+  if (!commentsText) {
+    alert('Please paste reviewer comments.');
+    return;
+  }
+
+  const fullText = documentInput.value;
+  if (!fullText.trim()) {
+    alert('Document is empty; paste or load your text first.');
+    return;
+  }
+
+  if (typeof window.generateCommentsImportPrompt !== 'function') {
+    alert('Comment import prompt helper is missing.');
+    return;
+  }
+
+  clearUserSelection();
+  resetState();
+  loadingOverlay.style.display = 'flex';
+  startLoadingTips();
+  loadingText.textContent = 'Translating comments...';
+  if (commentsApplyBtn) {
+    commentsApplyBtn.disabled = true;
+    commentsApplyBtn.textContent = 'Processing...';
+  }
+
+  try {
+    const latex = extractLatexContent(fullText);
+    const analysisText = latex.text;
+    const baseOffset = latex.offset || 0;
+
+    const prompt = window.generateCommentsImportPrompt({
+      documentText: analysisText,
+      commentsText,
+      languageInstruction: getLanguageInstruction()
+    });
+
+    const modelConfig = getModelForType('grammar');
+    const results = await callModelAPI(prompt, modelConfig, 'grammar');
+
+    if (!Array.isArray(results) || !results.length) {
+      alert('No corrections were generated from the comments.');
+      return;
+    }
+
+    const { mapped, unmatched } = mapCorrectionsToPositions(results, analysisText, baseOffset);
+
+      if (!mapped.length) {
+        alert('Could not map the generated corrections onto the document.');
+        return;
+      }
+
+      corrections = mapped;
+      currentIndex = 0;
+      documentInput.readOnly = true;
+      documentInput.classList.add('locked');
+      updateHighlightOverlay();
+      updateActiveCorrection();
+      focusEditorForShortcuts();
+      scheduleSessionSave();
+
+      if (commentsModal) commentsModal.classList.remove('visible');
+      if (commentsOverlay) commentsOverlay.classList.remove('visible');
+
+    if (unmatched.length) {
+      console.warn('Unmatched comment-derived corrections:', unmatched);
+      alert(`Loaded ${mapped.length} corrections. ${unmatched.length} could not be matched.`);
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Comment import cancelled by user.');
+    } else {
+      alert(`Importing comments failed: ${error.message}`);
+      console.error(error);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    stopLoadingTips();
+    loadingText.textContent = 'Analyzing...';
+    if (commentsApplyBtn) {
+      commentsApplyBtn.disabled = false;
+      commentsApplyBtn.textContent = 'Generate Corrections';
+    }
+  }
+}
+
+function setActiveSuggestionMark(newIndex, options = {}) {
+  const { scroll = true } = options;
+
+  // Clear previous active mark
+  const prevActive = highlightOverlay.querySelector('.suggestion.active');
+  if (prevActive) {
+    prevActive.classList.remove('active');
+  }
+
+  if (newIndex < 0 || newIndex >= corrections.length) return;
+
+  const activeMark = highlightOverlay.querySelector(`.suggestion[data-index="${newIndex}"]`);
+  if (!activeMark) return;
+
+  activeMark.classList.add('active');
+  showPopoverFor(activeMark, { scroll });
+}
+
+function updateActiveCorrection(options = {}) {
+  if (currentIndex < 0 || currentIndex >= corrections.length) {
+    hidePopover();
+    updateNavigation();
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    setActiveSuggestionMark(currentIndex, options);
+  });
+
+  updateNavigation();
+}
+
+function showPopoverFor(element, options = {}) {
+    const { scroll = true } = options;
+    const correction = corrections[currentIndex];
+    if (!correction) return;
+
+    popoverExplanation.textContent = correction.explanation || '';
+    popoverCorrected.removeAttribute('contenteditable');
+
+    if (correction.type === 'comment') {
+      popoverOriginal.innerHTML = escapeHtml(correction.original || '');
+      popoverCorrected.innerHTML = '<em>No change (comment only)</em>';
+    } else {
+      const diff = diffWords(correction.original, correction.corrected);
+      popoverOriginal.innerHTML = diff.originalHtml;
+      popoverCorrected.innerHTML = diff.correctedHtml;
+    }
+    
+    // Simply show the popover - no positioning needed
+    suggestionPopover.classList.add('visible');
+
+    if (scroll && element) {
+      // Scroll the active element into view with offset for bottom panel
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function hidePopover() {
+    suggestionPopover.classList.remove('visible');
+    document.querySelectorAll('.suggestion.active').forEach(el => el.classList.remove('active'));
+}
+
+function navigateCorrections(direction) {
+    if (corrections.length === 0) return;
+    
+    const newIndex = currentIndex + direction;
+    
+    if (newIndex >= 0 && newIndex < corrections.length) {
+        currentIndex = newIndex;
+        updateActiveCorrection({ scroll: true });
+    }
+}
+
+function updateNavigation() {
+    const correctionControls = document.getElementById('correctionControls');
+    const noSuggestionsBadge = document.getElementById('noSuggestionsBadge');
+    
+    // Handle Correction Navigation
+    if (corrections.length > 0 && currentIndex > -1) {
+        correctionControls.style.display = 'flex';
+        navInfo.style.display = 'block';
+        navInfo.textContent = `${currentIndex + 1} / ${corrections.length}`;
+        prevBtn.disabled = currentIndex <= 0;
+        nextBtn.disabled = currentIndex >= corrections.length - 1;
+        if (noSuggestionsBadge) noSuggestionsBadge.style.display = 'none';
+        const noSuggestionsActions = document.getElementById('noSuggestionsActions');
+        if (noSuggestionsActions) noSuggestionsActions.style.display = 'none';
+    } else {
+        correctionControls.style.display = 'flex';
+        navInfo.style.display = 'none';
+        navInfo.textContent = '';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        undoBtn.style.display = 'none';
+        if (noSuggestionsBadge) noSuggestionsBadge.style.display = 'inline';
+        const noSuggestionsActions = document.getElementById('noSuggestionsActions');
+        if (noSuggestionsActions) {
+          // Only show diff shortcut if there is a baseline and current text differs
+          const canDiff = originalDocumentText && (documentInput.value || '') !== originalDocumentText;
+          noSuggestionsActions.style.display = canDiff ? 'flex' : 'none';
+        }
+    }
+
+    // Handle Selection Actions
+    if (selectionMode && selectedText) {
+        selectionActions.style.display = 'flex';
+        const proofKeywords = /\\(?:theorem|proposition|lemma|proof)|\b(?:theorem|proposition|lemma|proof)\b/i;
+        const hasProofContent = proofKeywords.test(selectedText);
+        proofBtn.style.display = hasProofContent ? 'block' : 'none';
+    } else {
+        selectionActions.style.display = 'none';
+    }
+}
+
+function acceptCorrection(index) {
+  if (index < 0 || index >= corrections.length) return;
+
+  const correction = corrections[index];
+  if (correction.type === 'comment') {
+    // Comments don't modify text; just drop it
+    undoStack.push({
+      action: 'reject',
+      correction: { ...correction },
+      index: index,
+      textBefore: documentInput.value
+    });
+    corrections.splice(index, 1);
+    updateHighlightOverlay();
+    if (corrections.length === 0) {
+      resetState();
+    } else {
+      currentIndex = Math.min(index, corrections.length - 1);
+      updateActiveCorrection();
+    }
+    scheduleSessionSave();
+    return;
+  }
+  const editedCorrectionText = popoverCorrected.textContent;
+  
+  // Calculate lengthDiff once, at the start
+  const lengthDiff = editedCorrectionText.length - (correction.position.end - correction.position.start);
+
+  // --- UNDO LOGIC: ADD lengthDiff TO THE SAVED STATE ---
+  undoStack.push({
+      action: 'accept',
+      correction: { ...correction },
+      index: index,
+      textBefore: documentInput.value,
+      lengthDiff: lengthDiff // <-- THE KEY ADDITION
+  });
+  undoBtn.style.display = 'flex';
+  
+  let currentText = documentInput.value;
+  
+  currentText = currentText.substring(0, correction.position.start) +
+                 editedCorrectionText +
+                 currentText.substring(correction.position.end);
+  documentInput.value = currentText;
+
+  corrections.splice(index, 1);
+  
+  // This loop now uses the pre-calculated lengthDiff
+  for (let i = index; i < corrections.length; i++) {
+    corrections[i].position.start += lengthDiff;
+    corrections[i].position.end += lengthDiff;
+  }
+  updateHighlightOverlay();
+  
+  if (corrections.length === 0) {
+    resetState();
+  } else {
+    currentIndex = Math.min(index, corrections.length - 1);
+    updateActiveCorrection();
+  }
+  scheduleSessionSave();
+}
+
+function rejectCorrection(index) {
+  if (index < 0 || index >= corrections.length) return;
+
+  undoStack.push({
+      action: 'reject',
+      correction: { ...corrections[index] }, // Store a copy
+      index: index,
+      textBefore: documentInput.value // Text state is unchanged, but good for consistency
+  });
+  undoBtn.style.display = 'flex'; // Show the undo button
+
+  corrections.splice(index, 1);
+
+  updateHighlightOverlay();
+
+  if (corrections.length === 0) {
+      resetState(); // This will unlock the editor
+  } else {
+    currentIndex = Math.min(index, corrections.length - 1);
+    updateActiveCorrection();
+  }
+  scheduleSessionSave();
+}
+
+function rejectAllCorrections() {
+  if (!corrections.length) return;
+  resetState();
+  updateHighlightOverlay();
+}
+
+function normalizeCorrectionFields(corr) {
+  if (!corr || typeof corr !== 'object') return null;
+  const normalized = {
+    original: typeof corr.original === 'string' ? corr.original : String(corr.original ?? ''),
+    corrected: typeof corr.corrected === 'string' ? corr.corrected : String(corr.corrected ?? ''),
+    explanation: typeof corr.explanation === 'string' ? corr.explanation : '',
+    type: (() => {
+      if (corr.type === 'comment') return 'comment';
+      if (corr.type === 'style') return 'style';
+      return 'grammar';
+    })()
+  };
+  if (!normalized.original) return null;
+  return normalized;
+}
+
+// Map an array of corrections onto positions within the given text
+function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0) {
+  let searchFromIndex = 0;
+  const mapped = [];
+  const unmatched = [];
+
+  for (const corr of correctionsArray) {
+    const safe = normalizeCorrectionFields(corr);
+    if (!safe || !safe.original.length) {
+      continue;
+    }
+
+    let foundAtIndex = text.indexOf(safe.original, searchFromIndex);
+    if (foundAtIndex === -1) {
+      // First try a nearby fuzzy match (small window)
+      foundAtIndex = findApproxMatch(text, safe.original, searchFromIndex, 2, 2000);
+    }
+    if (foundAtIndex === -1) {
+      // As a last resort, search the whole text with the same tolerance
+      foundAtIndex = findApproxMatch(text, safe.original, 0, 2, 8000);
+    }
+
+    if (foundAtIndex !== -1) {
+      mapped.push({
+        ...safe,
+        position: {
+          start: baseOffset + foundAtIndex,
+          end: baseOffset + foundAtIndex + safe.original.length
+        }
+      });
+      searchFromIndex = foundAtIndex + safe.original.length;
+    } else {
+      unmatched.push(safe.original);
+      console.warn(`Could not map correction: "${safe.original}"`);
+    }
+  }
+
+  if (unmatched.length) {
+    console.warn('Unmatched corrections (showing up to 3):', unmatched.slice(0, 3).map(item => item.original || item));
+  }
+
+  // Sort by start position to keep rendering consistent even if model output is unordered
+  mapped.sort((a, b) => a.position.start - b.position.start);
+
+  return { mapped, unmatched };
+}
+
+// Stable mapping: tries exact first, then fuzzy, without assuming model order
+function mapCorrectionsStably(correctionsArray, text, baseOffset = 0) {
+  const mapped = [];
+  const unmatched = [];
+
+  const tryMatch = (corr) => {
+    const safe = normalizeCorrectionFields(corr);
+    if (!safe || !safe.original.length) return -1;
+    let pos = text.indexOf(safe.original);
+    if (pos !== -1) return pos;
+    // Fuzzy scan entire text if exact not found
+    return findApproxMatch(text, safe.original, 0, 2, 8000);
+  };
+
+  correctionsArray.forEach((corr) => {
+    const safe = normalizeCorrectionFields(corr);
+    if (!safe) return;
+    const pos = tryMatch(safe);
+    if (pos !== -1) {
+      mapped.push({
+        ...safe,
+        position: {
+          start: baseOffset + pos,
+          end: baseOffset + pos + safe.original.length
+        }
+      });
+    } else {
+      unmatched.push(safe);
+      console.warn(`Could not map correction: "${safe && safe.original}"`);
+    }
+  });
+
+  if (unmatched.length) {
+    console.warn('Unmatched corrections (showing up to 3):', unmatched.slice(0, 3).map(item => item.original || item));
+  }
+
+  // Sort by start position to keep rendering consistent
+  mapped.sort((a, b) => a.position.start - b.position.start);
+  return { mappedCorrections: mapped, unmatchedCorrections: unmatched };
+}
+
+function computeLineOps(oldText, newText) {
+  const oldLines = (oldText || '').split(/\r?\n/);
+  const newLines = (newText || '').split(/\r?\n/);
+  const n = oldLines.length;
+  const m = newLines.length;
+  const dp = Array(n + 1);
+  for (let i = 0; i <= n; i++) {
+    dp[i] = new Array(m + 1).fill(0);
+  }
+
+  // LCS table
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = oldLines[i] === newLines[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  // Walk forward from (0,0), emitting ops
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (oldLines[i] === newLines[j]) {
+      ops.push({
+        type: 'equal',
+        oldLine: oldLines[i],
+        newLine: newLines[j],
+        oldIndex: i,
+        newIndex: j
+      });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.push({
+        type: 'delete',
+        oldLine: oldLines[i],
+        oldIndex: i
+      });
+      i++;
+    } else {
+      ops.push({
+        type: 'insert',
+        newLine: newLines[j],
+        newIndex: j
+      });
+      j++;
+    }
+  }
+  while (i < n) {
+    ops.push({
+      type: 'delete',
+      oldLine: oldLines[i],
+      oldIndex: i
+    });
+    i++;
+  }
+  while (j < m) {
+    ops.push({
+      type: 'insert',
+      newLine: newLines[j],
+      newIndex: j
+    });
+    j++;
+  }
+
+  return { ops, oldLines, newLines };
+}
+
+function buildAlignedDiffBlocks(oldText, newText) {
+  const { ops } = computeLineOps(oldText, newText);
+  const blocks = [];
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k];
+    if (op.type === 'equal') continue;
+
+    if (op.type === 'delete' && ops[k + 1] && ops[k + 1].type === 'insert') {
+      const ins = ops[k + 1];
+      blocks.push({
+        oldLine: op.oldLine,
+        newLine: ins.newLine,
+        oldIndex: op.oldIndex,
+        newIndex: ins.newIndex
+      });
+      k++; // skip next
+    } else if (op.type === 'delete') {
+      blocks.push({
+        oldLine: op.oldLine,
+        newLine: '',
+        oldIndex: op.oldIndex,
+        newIndex: null
+      });
+    } else if (op.type === 'insert') {
+      blocks.push({
+        oldLine: '',
+        newLine: op.newLine,
+        oldIndex: null,
+        newIndex: op.newIndex
+      });
+    }
+  }
+  return blocks;
+}
+
+function computeLineDiff(oldText, newText) {
+  const { ops } = computeLineOps(oldText, newText);
+  const diff = ['--- old', '+++ new'];
+  ops.forEach(op => {
+    if (op.type === 'equal') {
+      diff.push(` ${op.oldLine !== undefined ? op.oldLine : ''}`);
+    } else if (op.type === 'delete') {
+      diff.push(`-${op.oldLine}`);
+    } else if (op.type === 'insert') {
+      diff.push(`+${op.newLine}`);
+    }
+  });
+  return diff.join('\n');
+}
+
+function downloadGlobalDiff() {
+  if (!originalDocumentText) {
+    alert('No baseline document is available yet. Load a file, the sample, or run an analysis to set a baseline.');
+    return;
+  }
+  const currentText = documentInput.value || '';
+  if (currentText === originalDocumentText) {
+    alert('No differences found between baseline and current document.');
+    return;
+  }
+  const timestamp = new Date().toISOString();
+  const diffBody = computeLineDiff(originalDocumentText, currentText);
+  const header = [
+    '# Global Diff',
+    `# Generated: ${timestamp}`,
+    ''
+  ].join('\n');
+  const payload = `${header}${diffBody}\n`;
+  const blob = new Blob([payload], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'document-diff.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function handleCustomAsk() {
+  if (!selectedText || !selectedRange) return;
+  
+  loadingOverlay.style.display = 'flex';
+  if (loadingSettings) {
+    const modelConfig = getModelForType('style');
+    loadingSettings.textContent = getCurrentSettingsSummary(modelConfig);
+  }
+  loadingText.textContent = 'Running custom ask...';
+  
+  try {
+    const instruction = (customAskInput.value || 'Help me improve this part').trim();
+    const modelConfig = getModelForType('style');
+    const fullText = documentInput.value;
+
+    // Context window around the selection
+    const contextStart = Math.max(0, selectedRange.start - 2000);
+    const contextEnd = Math.min(fullText.length, selectedRange.end + 2000);
+    const context = fullText.substring(contextStart, contextEnd);
+
+    const prompt = generateCustomAskPrompt(selectedText, context, instruction);
+    const results = await callModelAPI(prompt, modelConfig, 'custom');
+
+    // Display as a simple modal summary (reuse summary modal)
+    let html = '';
+    if (results && typeof results === 'object') {
+      if (results.comment) {
+        html += `<div class="summary-section"><h3>Comment</h3><p>${escapeHtml(results.comment)}</p></div>`;
+      }
+      if (Array.isArray(results.suggestions) && results.suggestions.length > 0) {
+        html += `<div class="summary-section"><h3>Suggestions</h3><ul>${results.suggestions.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
+      }
+    }
+    centerSummaryModal();
+    summaryContent.innerHTML = html || '<p>No response.</p>';
+    summaryModal.classList.add('visible');
+    modalOverlay.classList.add('visible');
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Custom ask cancelled by user.');
+    } else {
+      alert(`Custom ask failed: ${error.message}`);
+      console.error(error);
+      showApiKeyPromptIfMissing(error);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    loadingText.textContent = 'Analyzing...';
+  }
+}
+
+// Simple bounded Levenshtein for fuzzy matching with early exit
+function boundedLevenshtein(a, b, maxDist) {
+  const al = a.length;
+  const bl = b.length;
+  if (Math.abs(al - bl) > maxDist) return maxDist + 1;
+  const dp = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) dp[j] = j;
+  for (let i = 1; i <= al; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    let minRow = dp[0];
+    for (let j = 1; j <= bl; j++) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(
+        dp[j] + 1,
+        dp[j - 1] + 1,
+        prev + cost
+      );
+      prev = temp;
+      if (dp[j] < minRow) minRow = dp[j];
+    }
+    if (minRow > maxDist) return maxDist + 1; // early exit
+  }
+  return dp[bl];
+}
+
+// Find approximate match of needle in haystack near fromIndex
+function findApproxMatch(haystack, needle, fromIndex = 0, maxDist = 2, searchWindow = 2000) {
+  const exact = haystack.indexOf(needle, fromIndex);
+  if (exact !== -1) return exact;
+
+  const needleLen = needle.length;
+  const start = Math.max(0, fromIndex - searchWindow);
+  const end = Math.min(haystack.length - needleLen, fromIndex + searchWindow);
+  let bestPos = -1;
+  let bestDist = maxDist + 1;
+
+  for (let pos = start; pos <= end; pos++) {
+    const candidate = haystack.substr(pos, needleLen);
+    const dist = boundedLevenshtein(candidate, needle, maxDist);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestPos = pos;
+      if (bestDist === 0) break;
+    }
+  }
+
+  return bestDist <= maxDist ? bestPos : -1;
+}
+
+// Modal functions
+function openImportChoice() {
+  if (importChoiceModal) importChoiceModal.classList.add('visible');
+  if (importChoiceOverlay) importChoiceOverlay.classList.add('visible');
+}
+
+function closeImportChoice() {
+  if (importChoiceModal) importChoiceModal.classList.remove('visible');
+  if (importChoiceOverlay) importChoiceOverlay.classList.remove('visible');
+}
+
+function openCustomPromptModal() {
+  if (customPresetContainer && !customPresetRendered) {
+    PRESET_INSTRUCTIONS.forEach((preset) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'preset-chip';
+      btn.textContent = preset.label;
+      btn.title = preset.text;
+      btn.addEventListener('click', () => {
+        if (!customInstructionInput) return;
+        const current = customInstructionInput.value.trim();
+        const snippet = preset.text.trim();
+        const hasSnippet = current.includes(snippet);
+        if (!hasSnippet) {
+          customInstructionInput.value = current
+            ? `${current}\n\n${snippet}`
+            : snippet;
+        }
+        customInstructionInput.focus();
+      });
+      customPresetContainer.appendChild(btn);
+    });
+    customPresetRendered = true;
+  }
+  if (customInstructionInput && !customInstructionInput.value.trim()) {
+    customInstructionInput.value = PRESET_INSTRUCTIONS[0].text;
+  }
+  if (customModelInfo) {
+    const langText = languageSelect && languageSelect.options[languageSelect.selectedIndex]
+      ? languageSelect.options[languageSelect.selectedIndex].text
+      : '';
+    customModelInfo.textContent = `Model: ${getSelectedModelLabel()} | Language: ${langText || 'n/a'}`;
+  }
+  customPromptModal.classList.add('visible');
+  customPromptOverlay.classList.add('visible');
+}
+
+function closeCustomPromptModal() {
+  customPromptModal.classList.remove('visible');
+  customPromptOverlay.classList.remove('visible');
+}
+
+function resetCustomPromptModal() {
+  if (customInstructionInput) customInstructionInput.value = '';
+  if (customAggressiveness) customAggressiveness.value = 'moderate';
+  if (customScopeRadios) {
+    customScopeRadios.forEach(r => { if (r.value === 'auto') r.checked = true; });
+  }
+}
+
+function getCustomScopeSelection() {
+  if (!customScopeRadios || !customScopeRadios.length) return 'auto';
+  const checked = Array.from(customScopeRadios).find(r => r.checked);
+  return (checked && checked.value) || 'auto';
+}
+
+function buildCustomInstructionPrompt(baseText, scope, aggressiveness) {
+  const parts = [baseText.trim()];
+  const strengthMap = {
+    minimal: 'Be minimal: propose only essential corrections; keep phrasing as-is when reasonable.',
+    moderate: 'Be moderate: improve clarity and flow while keeping the author\'s voice.',
+    aggressive: 'Be aggressive: rewrite locally for clarity and style as long as meaning stays intact.'
+  };
+  if (strengthMap[aggressiveness]) {
+    parts.push(strengthMap[aggressiveness]);
+  }
+  if (scope === 'selection') {
+    parts.push('Only edit the selected span. The Document block contains only that span; do not invent or refer to text outside what you see.');
+  } else if (scope === 'full') {
+    parts.push('Edit the full document. Do not rely on selection state.');
+  } else {
+    parts.push('If a selection was made, the Document block contains only that span; otherwise it contains the full document. Only edit what is shown.');
+  }
+  parts.push('Do not be overly conservative and include additional optional/speculative suggestions. Do so especially if you find few clear issues, and try for at least 1 comment per paragraph. Mark any speculative items in the explanation (e.g., prefix with "Speculative:"). Preserve meaning and LaTeX.');
+  return parts.join('\n\n');
+}
+
+function ensureCustomRuleSelected() {
+  const ensureOption = (selectEl) => {
+    if (!selectEl) return;
+    let opt = selectEl.querySelector('option[value="custom_dynamic"]');
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = 'custom_dynamic';
+      opt.textContent = 'Custom Check';
+      selectEl.appendChild(opt);
+    }
+    opt.selected = true;
+  };
+  ensureOption(ruleSelect);
+  ensureOption(styleSelect);
+}
+
+function handleCustomPromptRun() {
+  const instructions = (customInstructionInput && customInstructionInput.value || '').trim();
+  if (!instructions) {
+    alert('Please enter user instructions or choose a preset.');
+    return;
+  }
+  const scope = getCustomScopeSelection();
+  if (scope === 'selection' && !(selectionMode && selectedRange)) {
+    alert('Select some text first to run on the current selection, or choose Auto/Full.');
+    return;
+  }
+  if (scope === 'full') {
+    clearUserSelection();
+  }
+  const aggressiveness = customAggressiveness ? customAggressiveness.value : 'moderate';
+  const promptText = buildCustomInstructionPrompt(instructions, scope, aggressiveness);
+
+  window.WRITING_RULES.custom_dynamic = {
+    name: 'Custom Check',
+    description: 'User-provided custom instruction',
+    // Use style path so the custom instructions are always injected into the prompt
+    type: 'style',
+    isCustom: true,
+    prompt: promptText
+  };
+
+  ensureCustomRuleSelected();
+  handleAnalysis();
+  closeCustomPromptModal();
+}
+
+function startLoadingTips() {
+  if (!loadingTipEl) return;
+  if (loadingTipTimer) clearInterval(loadingTipTimer);
+  const pool = Array.isArray(LOADING_TIPS) && LOADING_TIPS.length ? LOADING_TIPS : ['Working on it...'];
+  loadingTipIndex = Math.floor(Math.random() * pool.length);
+  const updateTip = () => {
+    loadingTipEl.textContent = pool[loadingTipIndex % pool.length];
+    loadingTipIndex++;
+  };
+  updateTip();
+  loadingTipTimer = setInterval(updateTip, 5000);
+}
+
+function stopLoadingTips() {
+  if (loadingTipTimer) {
+    clearInterval(loadingTipTimer);
+    loadingTipTimer = null;
+  }
+  if (loadingTipEl) loadingTipEl.textContent = '';
+}
+
+function getSelectedModelLabel() {
+  const family = (modelFamilySelect && modelFamilySelect.value) || 'thinking';
+  const config = MODEL_FAMILIES[family] || MODEL_FAMILIES.thinking;
+  return config.label || config.model || family;
+}
+
+function openJsonModal() {
+  if (jsonInput) jsonInput.value = '';
+  if (jsonModal) jsonModal.classList.add('visible');
+  if (jsonOverlay) jsonOverlay.classList.add('visible');
+  if (jsonInput) jsonInput.focus();
+}
+
+function closeJsonModal() {
+  if (jsonModal) jsonModal.classList.remove('visible');
+  if (jsonOverlay) jsonOverlay.classList.remove('visible');
+}
+
+function openCommentsModal() {
+  if (commentsInput) commentsInput.value = '';
+  if (commentsModal) commentsModal.classList.add('visible');
+  if (commentsOverlay) commentsOverlay.classList.add('visible');
+  if (commentsInput) commentsInput.focus();
+}
+
+function closeCommentsModal() {
+  if (commentsModal) commentsModal.classList.remove('visible');
+  if (commentsOverlay) commentsOverlay.classList.remove('visible');
+}
+
+function showLastRunModal() {
+  lastRunBody.innerHTML = '';
+  if (!lastRuns.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No runs yet.';
+    lastRunBody.appendChild(empty);
+  } else {
+    lastRuns.forEach((run, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.style.marginBottom = '16px';
+      const meta = document.createElement('div');
+      meta.style.fontSize = '0.85rem';
+      meta.style.color = '#444';
+      const providerLabel = run.provider ? `${run.provider}` : 'openai';
+      meta.textContent = `#${idx + 1} • ${providerLabel} • ${run.model} • ${run.responseType} • ${run.start}`;
+      if (run.usage) {
+        const usage = document.createElement('div');
+        usage.style.fontSize = '0.8rem';
+        usage.style.color = '#555';
+        const tok = run.usage;
+        const parts = [];
+        if (tok.total_tokens != null) {
+          parts.push(`Tokens total: ${tok.total_tokens}`);
+        }
+        if (tok.input_tokens != null || tok.output_tokens != null) {
+          parts.push(`in ${tok.input_tokens || 0} / out ${tok.output_tokens || 0}`);
+        }
+        parts.push(
+          typeof tok.total_cost_usd === 'number'
+            ? `est. cost ~$${tok.total_cost_usd.toFixed(4)}`
+            : 'est. cost unavailable'
+        );
+        usage.textContent = parts.join(' • ');
+        wrapper.appendChild(usage);
+      }
+      const promptBlock = document.createElement('div');
+      promptBlock.className = 'log-block';
+      const respBlock = document.createElement('div');
+      respBlock.className = 'log-block';
+  
+      const copyPromptBtn = document.createElement('button');
+      copyPromptBtn.className = 'popover-btn';
+      copyPromptBtn.textContent = 'Copy prompt';
+      copyPromptBtn.style.marginTop = '6px';
+      copyPromptBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(run.prompt || '').catch(() => {});
+      });
+  
+      const copyRespBtn = document.createElement('button');
+      copyRespBtn.className = 'popover-btn';
+      copyRespBtn.textContent = 'Copy response';
+      copyRespBtn.style.marginTop = '6px';
+      copyRespBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(run.responseRaw || '').catch(() => {});
+      });
+  
+      const truncate = (s, max = 2000) => {
+        if (!s) return '(none)';
+        return s.length > max ? s.slice(0, max) + '\n\n[truncated]' : s;
+      };
+  
+      promptBlock.textContent = truncate(run.prompt, 2000);
+      respBlock.textContent = truncate(run.responseRaw || JSON.stringify(run.responseParsed || {}, null, 2), 2000);
+  
+      wrapper.appendChild(meta);
+      wrapper.appendChild(document.createElement('h3')).textContent = 'Prompt';
+      wrapper.appendChild(promptBlock);
+      wrapper.appendChild(copyPromptBtn);
+      wrapper.appendChild(document.createElement('h3')).textContent = 'Response';
+      wrapper.appendChild(respBlock);
+      wrapper.appendChild(copyRespBtn);
+      lastRunBody.appendChild(wrapper);
+    });
+  }
+ 
+  lastRunModal.classList.add('visible');
+  lastRunOverlay.classList.add('visible');
+}
+
+function hideLastRunModal() {
+  lastRunModal.classList.remove('visible');
+  lastRunOverlay.classList.remove('visible');
+}
+
+function showGlobalDiffModal() {
+  if (!originalDocumentText) {
+    alert('No baseline document is available yet. Load a file, the sample, or run an analysis to set a baseline.');
+    return;
+  }
+  const currentText = documentInput.value || '';
+  const visualRows = buildAlignedDiffBlocks(originalDocumentText, currentText);
+  if (diffContent) {
+    diffContent.innerHTML = '';
+    let hasDiff = false;
+    visualRows.forEach(row => {
+      hasDiff = true;
+      const hasOld = row.oldIndex !== null && row.oldIndex !== undefined && row.oldLine !== undefined;
+      const hasNew = row.newIndex !== null && row.newIndex !== undefined && row.newLine !== undefined;
+      const replaceDiff = diffWords(row.oldLine || '', row.newLine || '');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'diff-row';
+      const title = document.createElement('h4');
+      let label = 'Changed';
+      if (hasOld && hasNew) {
+        label = `Old ${row.oldIndex + 1} → New ${row.newIndex + 1}`;
+      } else if (hasOld) {
+        label = `Deleted (Old ${row.oldIndex + 1})`;
+      } else if (hasNew) {
+        label = `Inserted (New ${row.newIndex + 1})`;
+      }
+      title.textContent = label;
+      const pair = document.createElement('div');
+      pair.className = 'diff-pair';
+
+      if (hasOld) {
+        const orig = document.createElement('div');
+        orig.className = 'diff-cell';
+        const d = hasNew ? replaceDiff : diffWords(row.oldLine || '', '');
+        orig.innerHTML = d.originalHtml || '';
+        pair.appendChild(orig);
+      }
+
+      if (hasOld && hasNew) {
+        const arrow = document.createElement('div');
+        arrow.style.minWidth = '24px';
+        arrow.style.textAlign = 'center';
+        arrow.textContent = '→';
+        pair.appendChild(arrow);
+      }
+
+      if (hasNew) {
+        const corr = document.createElement('div');
+        corr.className = 'diff-cell';
+        const d = hasOld ? replaceDiff : diffWords('', row.newLine || '');
+        corr.innerHTML = d.correctedHtml || '';
+        pair.appendChild(corr);
+      }
+
+      wrapper.appendChild(title);
+      wrapper.appendChild(pair);
+      diffContent.appendChild(wrapper);
+    });
+    if (!hasDiff) {
+      const nothing = document.createElement('div');
+      nothing.textContent = 'No differences.';
+      diffContent.appendChild(nothing);
+    }
+  }
+  if (diffModal) diffModal.classList.add('visible');
+  if (diffOverlay) diffOverlay.classList.add('visible');
+}
+
+// Open a simple standalone diff window (placeholder content for now)
+function showGlobalDiffInNewWindow() {
+  if (!originalDocumentText) {
+    alert('No baseline document is available yet. Load a file, the sample, or run an analysis to set a baseline.');
+    return;
+  }
+  const currentText = documentInput.value || '';
+  if (currentText === originalDocumentText) {
+    alert('No differences found between baseline and current document.');
+    return;
+  }
+
+  const diffBody = computeLineDiff(originalDocumentText, currentText);
+  const win = window.open('', '_blank', 'noopener,noreferrer');
+  if (!win) {
+    alert('Popup blocked. Please allow popups to view the diff in a new window.');
+    return;
+  }
+  win.document.write(
+    '<!DOCTYPE html><html><head><title>Global Diff</title></head><body>' +
+    '<pre style="white-space:pre-wrap; font-family:monospace;">' +
+    escapeHtml(diffBody) +
+    '</pre></body></html>'
+  );
+  win.document.close();
+}
+
+function hideDiffModal() {
+  if (diffModal) diffModal.classList.remove('visible');
+  if (diffOverlay) diffOverlay.classList.remove('visible');
+}
+
+function showAboutModal() {
+  aboutModal.classList.add('visible');
+  aboutOverlay.classList.add('visible');
+}
+
+function closeAboutModal() {
+  aboutModal.classList.remove('visible');
+  aboutOverlay.classList.remove('visible');
+}
+
+function showFileModal() {
+  fileModal.classList.add('visible');
+  fileOverlay.classList.add('visible');
+}
+
+function closeFileModal() {
+  fileModal.classList.remove('visible');
+  fileOverlay.classList.remove('visible');
+  dropZone.classList.remove('dragging');
+}
+
+
+// File handling functions
+function handleDragOver(e) {
+  e.preventDefault();
+  dropZone.classList.add('dragging');
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  dropZone.classList.remove('dragging');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  dropZone.classList.remove('dragging');
+  
+  const files = e.dataTransfer.files;
+  if (files.length === 0) return;
+  if (!confirmDiscardCurrentWork()) return;
+  processFile(files[0]);
+}
+
+function handleFileSelect(e) {
+  const files = e.target.files;
+  if (files.length > 0) {
+    if (!confirmDiscardCurrentWork()) {
+      e.target.value = '';
+      return;
+    }
+    processFile(files[0]);
+    e.target.value = '';
+  }
+}
+
+function processFile(file) {
+  // Check file extension
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.tex') && !fileName.endsWith('.txt')) {
+    alert('Please select a .tex or .txt file');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    resetState({ skipSave: true });
+    documentInput.value = e.target.result;
+    originalDocumentText = documentInput.value;
+    clearUserSelection();
+    updateHighlightOverlay();
+    closeFileModal();
+    sessionDirty = true;
+    trySaveSessionSnapshot();
+  };
+  reader.onerror = function() {
+    alert('Error reading file');
+  };
+  reader.readAsText(file);
+}
+
+</script>
+
+</body>
+</html>

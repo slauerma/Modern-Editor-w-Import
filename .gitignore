@@ -1,0 +1,20 @@
+.DS_Store
+
+# Local API keys (keep secrets out of git)
+keys.js
+local-keys/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Session exports from the app
+modern-editor-session*.json
+
+# Node dependencies (if added later)
+node_modules/
+
+# Python virtualenvs
+.venv/
+venv/
