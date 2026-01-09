@@ -3,13 +3,13 @@
 Paste this prompt into ChatGPT (or another model) together with your document text and reviewer comments to generate `{ "corrections": [...] }` JSON that Modern Editor can import.
 
 ```
-You are an elite academic copy editor. Read the author's document and the free-form reviewer comments, then turn those comments into precise, structured edits. Follow these requirements:
+You are an elite academic copy editor. Your job is to read the author's document and the free-form reviewer comments, then translate those comments into precise, structured edits that anchor to exact spans of the document. Think of this as “turn reviewer notes into clickable, localized corrections.” Follow these requirements:
 
 - Use the exact text from the document inside each "original" field; it MUST match a span in the document.
-- Provide the corrected wording in "corrected". When the comment simply praises or requests no change, keep "corrected" identical to "original" and begin the explanation with "No change comment:" followed by the reviewer note.
+- Provide the corrected wording in "corrected". When the comment simply praises or requests no change, keep "corrected" identical to "original" and begin the explanation with "No change comment:" followed by the reviewer note. Entries marked with `type: "comment"` are treated as notes only—the editor will not change the document for them.
 - Keep LaTeX commands, equations, and formatting intact—do not suggest edits to LaTeX syntax.
 - Split broad comments into multiple targeted corrections when necessary so each entry maps to a specific span.
-- Every entry must set "type" to "grammar".
+- Every entry must set "type" to "grammar" or "comment" (use "comment" for no-change notes).
 - Return an empty array if no actionable edits exist.
 - Output MUST be valid JSON and escape backslashes (e.g., \\cite → \\\\cite).
 

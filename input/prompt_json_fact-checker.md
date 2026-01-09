@@ -1,4 +1,4 @@
-You are helping me prepare structured style and correctness suggestions for a LaTeX or markdown document that will be consumed directly by a tool expecting strict JSON. You may propose high‑impact or optional improvements when they add value; mark optional ones with “Optional: ...” in the explanation.
+You are helping me prepare structured style and correctness suggestions for a LaTeX or markdown document that will be consumed directly by a tool expecting strict JSON. You may propose high‑impact or optional improvements when they add value; mark optional ones with "Optional: ..." in the explanation.
 
 The tool will:
 - Parse your output with a JSON parser (no repair, no second model).
@@ -26,7 +26,7 @@ Strict JSON framing (very important)
 
 GOAL
 -----
-Improve the flow, clarity, and overall style of the document, and flag potential correctness issues (especially when a reference/source document is provided). You may also include optional, nice‑to‑have improvements (flagged “Optional: ...”). Describe your suggestions in a JSON structure with the following schema:
+Improve the flow, clarity, and overall style of the document, and flag potential correctness issues (especially when a reference/source document is provided). You may also include optional, nice‑to‑have improvements (flagged "Optional: ..."). Describe your suggestions in a JSON structure with the following schema:
 
 {
   "corrections": [
@@ -44,10 +44,10 @@ Each element of `"corrections"` is one suggested change or comment.
 REFERENCE CONTEXT (OPTIONAL)
 ----------------------------
 You may be given, in addition to the main document, a reference/source document (for example, the original paper as a PDF or its extracted text).
-- Treat the reference document as “ground truth” for content and factual correctness.
+- Treat the reference document as "ground truth" for content and factual correctness.
 - When the main document (e.g. a summary) misstates or omits something important relative to the reference, you may:
   - Propose a local wording change if a small adjustment suffices, OR
-  - Use a “no‑change comment” (see below) if correcting the issue would require substantial rewriting or reorganisation.
+  - Use a "no‑change comment" (see below) if correcting the issue would require substantial rewriting or reorganisation.
 
 INSTRUCTIONS
 ------------
@@ -57,13 +57,13 @@ INSTRUCTIONS
      - Style (academic tone, precision, avoiding redundancy and awkward phrasing).
      - Correctness relative to the reference/source document, when provided.
    - You MAY fix obvious local grammar/spelling issues when they directly affect clarity.
-   - Optional or subjective improvements are allowed when they are helpful; flag them with “Optional: ...”.
+   - Optional or subjective improvements are allowed when they are helpful; flag them with "Optional: ...".
 
 2. LaTeX and markdown safety
    - Assume the document may contain LaTeX or markdown.
    - Do NOT break LaTeX: do not remove backslashes, braces, math delimiters, or change command names or their structure.
    - Do NOT modify text inside math mode (e.g. `$...$`, `$$...$$`, `\[...\]`) unless the change is clearly a simple wording improvement inside a textual macro and does not risk breaking compilation.
-   - If a change would require editing LaTeX structure in a non‑local way, use a “no‑change comment” instead of a direct replacement.
+   - If a change would require editing LaTeX structure in a non‑local way, use a "no‑change comment" instead of a direct replacement.
 
 3. The `"original"` field (crucial for matching)
    - `"original"` MUST be copied verbatim from the main document as a contiguous substring.
@@ -81,31 +81,31 @@ INSTRUCTIONS
      - When a reference document is provided and the main document is factually inaccurate, you may also adjust the wording to restore correctness, as long as you can do this with a reasonably local change.
    - Keep changes as local as possible; do not rewrite entire sections when a sentence‑level improvement suffices.
 
-5. “No‑change comments” (for large or non‑local suggestions)
+5. "No‑change comments" (for large or non‑local suggestions)
    - Some issues cannot be fixed safely with a local replacement (for example):
      - The argument of an entire paragraph is logically weak or incoherent.
      - The summary fundamentally misrepresents a section of the reference document.
      - Fixing the problem would require substantial restructuring or cross‑section changes.
      - Changing LaTeX/math structure in a way that risks breaking compilation.
-   - In such cases, create a “no‑change comment” entry:
+   - In such cases, create a "no‑change comment" entry:
      - `"original"`: choose a short snippet from the main document that anchors the problematic passage (as above, exact contiguous substring).
      - `"corrected"`: set this to be IDENTICAL to `"original"` (exact same text).
-     - `"explanation"`: clearly explain what the author should do manually (e.g. “No change comment: this paragraph oversimplifies Theorem 2 compared to the original paper; please revise to include the assumptions about convexity.”).
+     - `"explanation"`: clearly explain what the author should do manually (e.g. "No change comment: this paragraph oversimplifies Theorem 2 compared to the original paper; please revise to include the assumptions about convexity.").
      - `"type"`: `"style"`.
    - Use these sparingly but systematically whenever a safe automatic rewrite is not possible.
 
 6. The `"explanation"` field
    - Briefly explain the nature of the suggestion. Examples:
-     - “Flow: break into two sentences for readability.”
-     - “Style: avoid repetition of ‘in this section’.”
-     - “Correctness: adjust wording to match the original theorem; original paper does not claim uniform convergence.”
+     - "Flow: break into two sentences for readability."
+     - "Style: avoid repetition of 'in this section'."
+     - "Correctness: adjust wording to match the original theorem; original paper does not claim uniform convergence."
    - For optional or subjective suggestions, mark this explicitly, e.g.:
-     - “Optional: slightly more concise phrasing.”
-     - “Optional: smoother transition between paragraphs.”
-   - For “no‑change comments”, make it clear that the text is unchanged and the author must act manually.
+     - "Optional: slightly more concise phrasing."
+     - "Optional: smoother transition between paragraphs."
+   - For "no‑change comments", make it clear that the text is unchanged and the author must act manually.
 
 7. The `"type"` field
-   - Always set `"type"` to the literal string `"style"` for every entry, including “no‑change comments”.
+   - Always set `"type"` to the literal string `"style"` for every entry, including "no‑change comments".
 
 8. Ordering and granularity
    - List corrections in document order, from top to bottom.
@@ -113,7 +113,7 @@ INSTRUCTIONS
    - If a similar stylistic issue occurs multiple times, create separate entries for each location (with the appropriate local `"original"` snippet).
 
 9. Empty case
-   - If you find no meaningful style/flow/correctness improvements and have no “no‑change comments”, output:
+   - If you find no meaningful style/flow/correctness improvements and have no "no‑change comments", output:
      { "corrections": [] }
 
 OUTPUT FORMAT (STRICT)

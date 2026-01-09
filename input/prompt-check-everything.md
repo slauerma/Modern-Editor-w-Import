@@ -15,7 +15,7 @@ Your job is to identify issues and opportunities for improvement in the document
 ]
 }
 
-The scope of “issues and opportunities for improvement” includes, in particular:
+The scope of "issues and opportunities for improvement" includes, in particular:
 
 * Grammar, spelling, and basic syntax.
 * Style and clarity (especially for academic prose).
@@ -53,13 +53,13 @@ A separate tool will parse this JSON directly and apply the corrections to the d
 
 Sometimes there may be one or more PDFs or other documents provided for reference or further context.
 
-* If a reference document clearly plays the role of a “ground truth” (e.g., the original paper), use it to check factual, logical, and mathematical correctness.
+* If a reference document clearly plays the role of a "ground truth" (e.g., the original paper), use it to check factual, logical, and mathematical correctness.
 * If the reference material is more contextual (slides, notes, related papers), use it only as helpful background; do not force agreement if the TARGET DOCUMENT is intentionally taking a different stance.
 * Do NOT propose changes to the reference documents themselves. All "original" snippets in the JSON must come from the TARGET DOCUMENT.
 
 ## Output format (very important)
 
-See “Strict JSON framing” above: no fences, first char `{`, last char `}`, single object with "corrections", backslashes doubled, and inner quotes escaped.
+See "Strict JSON framing" above: no fences, first char `{`, last char `}`, single object with "corrections", backslashes doubled, and inner quotes escaped.
 
 ## How the JSON will be used (very important)
 
@@ -99,12 +99,12 @@ If "original" is not an exact, contiguous match, the correction may be ignored o
    * Style and clarity, especially for formal or academic writing (remove unnecessary colloquialisms, improve awkward phrasing, avoid redundancy).
    * Factual claims that are clearly wrong or inconsistent with the reference material, if provided.
    * Logical coherence of arguments and proofs (missing steps that prevent understanding, implicit assumptions that must be made explicit, contradictions).
-   * Mathematical expressions: algebraic mistakes, sign errors, reversed inequalities, missing absolute values, missing conditions (e.g. “for all (x \in X)”), incorrect or inconsistent notation.
+   * Mathematical expressions: algebraic mistakes, sign errors, reversed inequalities, missing absolute values, missing conditions (e.g. "for all (x \in X)"), incorrect or inconsistent notation.
    * Consistency of terminology and notation across the document.
 
 2. You SHOULD NOT:
 
-   * Change the author’s intended meaning without strong reason (e.g., to fix a clear error).
+   * Change the author's intended meaning without strong reason (e.g., to fix a clear error).
    * Rewrite large sections purely to impose your stylistic preferences.
    * Introduce new concepts, notation, or assumptions that are not already implicit in the text, unless they are clearly necessary to make an existing argument correct.
    * Normalize spacing, line breaks, or LaTeX formatting when there is no real improvement in clarity or correctness.
@@ -119,7 +119,7 @@ If "original" is not an exact, contiguous match, the correction may be ignored o
   * Inconsistent with earlier notation or definitions.
   * Misaligned with a clearly intended standard formula or with a reference document (if provided).
 * Prefer minimal changes: fix the error while keeping the surrounding notation and structure intact.
-* If a formula or derivation is fundamentally flawed and requires a substantial rewrite, use a “No change comment” (see below) rather than attempting to reconstruct it in detail.
+* If a formula or derivation is fundamentally flawed and requires a substantial rewrite, use a "No change comment" (see below) rather than attempting to reconstruct it in detail.
 
 ## Instructions for individual corrections
 
@@ -156,7 +156,7 @@ For each local issue (typically within a sentence or short passage):
 ## Granularity
 
 * Prefer relatively small units (phrases or single sentences) rather than long multi-paragraph spans, provided the snippet is still unique in the TARGET DOCUMENT.
-* Avoid rewriting entire sections inside "corrected". For large structural problems, use “No change comments” as described below.
+* Avoid rewriting entire sections inside "corrected". For large structural problems, use "No change comments" as described below.
 
 ## Optional vs strongly recommended changes
 
@@ -165,7 +165,7 @@ For each local issue (typically within a sentence or short passage):
 
   * Start the "explanation" with "Optional: ...".
 
-## “No change comments” for large or structural issues
+## "No change comments" for large or structural issues
 
 Sometimes a safe local replacement is not sufficient or appropriate. This includes situations where:
 

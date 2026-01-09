@@ -11,7 +11,8 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 
 ## Quickstart
 1) Open `index.html` in a modern browser. No build or server needed.  
-2) API key (for live calls): enter it in the startup modal (session-only) or preload `window.OPENAI_API_KEY` in `keys.js`.  
+2) API key (for live calls): open Menu → API keys / status… (session-only) or preload `window.OPENAI_API_KEY` in `keys.js`.  
+   - The app prompts for the selected provider when you run a task without a key.  
    - Offline: skip the key and use Import → Structured JSON or the built-in Example.  
 3) Load text: paste, or Menu → Load New Document (`.tex`/`.txt`).  
 4) Run checks: left toolbar → Grammar, Style, or Custom Task.  
@@ -21,19 +22,23 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 
 ## Highlights & shortcuts
 - Inline navigation: `←` / `→` previous/next; `Enter` accept; `Backspace/Delete` reject; `E` edit the suggested text; `Esc` exits editing.  
+- `Ctrl/Cmd+S`: download a session snapshot (`.json`).  
 - Shortcuts only hijack keys when corrections are active and focus isn’t in another input. Locked editor accepts shortcuts; real inputs keep normal behavior.
 
 ---
 
 ## What it can do
 - Grammar & spelling: context- and LaTeX-aware; language selector (English variants, French, German, Spanish, Catalan, …).
+- Format: selector for LaTeX (default), Markdown, or plain text to steer prompt handling.
 - Style: built-in rules (e.g., academic style) plus custom instructions (scope/aggressiveness).  
 - Selection tools: Simplify (3 brevity levels), Proof check (beta), Custom Ask on selected text.  
 - LaTeX handling: full runs strip the preamble (`\begin{document}`…`\end{document}`) for analysis; corrections are mapped back with offsets; LaTeX commands/math are preserved. Selections send surrounding text as read-only context.  
-- Models/tools: GPT-5.1 (thinking variants), GPT-5-pro, GPT-4.1-mini. GPT-5.1 can optionally enable web search and Python (default off). Token/cost info is shown in the menu’s run log (and also logged to the console).  
+- Chunking/parallelism: set max chunk size; optionally run multiple chunks in parallel (OpenAI only, Gemini/Pro stay single-threaded).  
+- Supporting files: attach PDFs/images/text as read-only context; plain text (markdown/latex) is preferred because PDFs are slower and more expensive. Large PDFs/images show a warning in the list. Attachments are skipped when chunking is active, so increase chunk size to include them (a warning appears in the loading overlay and console). Runs with supporting files show a confirmation listing files, sizes, and model settings, plus a brief toast after you continue.  
+- Models/tools: GPT-5.2 (thinking), GPT-5.2-pro, GPT-4.1-mini. OpenAI/GPT-5.2 is the primary path by design; Gemini/Pro are supported where practical. GPT-5.2 can optionally enable web search and Python (default off). GPT-5.2-pro runs in single-step function-call output mode, so tools are disabled to preserve structured output reliability (Pro does not support `json_schema`). Token/cost info is shown in the menu’s run log (and also logged to the console).  
 - Import/offline: Structured JSON corrections; Unstructured Comments → structured corrections; built-in Example to demo without API calls.  
-- Diff/session: baseline tracking; Global Diff modal + download; autosave/session restore (also manual save/load `.json`).
-- Models: OpenAI (GPT-5.1 families, GPT-5-pro, GPT-4.1-mini) and Gemini (2.5 Flash/Pro) share the same JSON schemas; tools (web/code) are OpenAI-only.
+- Diff/session: baseline tracking; Global Diff modal + download; autosave/session restore with backup + doc-only fallback; manual save/load `.json`; optional “Save checkpoint (local)”/restore for a browser-stored snapshot. Session snapshots include model/language/format/chunk size/parallel calls and tool toggles.
+- Models: OpenAI (GPT-5.2 families, GPT-5.2-pro, GPT-4.1-mini) and Gemini (3 Flash preview, 2.5 Flash/Pro) share the same JSON schemas; tools (web/code) are OpenAI-only and disabled for GPT-5.2-pro.
 
 ---
 
@@ -42,12 +47,12 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 - Simplify: `{ same_length, moderate, concise }` strings.  
 - Proof: `{ is_valid, issues[], questions[], suggestions[], overall }`.  
 - Custom Ask: `{ comment, suggestions[] }`.
-- Gemini support: model selector includes Gemini 2.5 Flash/Pro. Same JSON schemas apply; tools (web/code) remain OpenAI-only.
+- Gemini support: model selector includes Gemini 3 Flash (preview) and Gemini 2.5 Flash/Pro. Same JSON schemas apply; tools (web/code) remain OpenAI-only.
 
 ---
 
 ## Key handling
-- Default path: enter key in the modal (session-only).  
+- Default path: enter key in the modal (session-only); the prompt targets the selected provider.  
 - OpenAI: set `window.OPENAI_API_KEY` or use `OPENAI_KEY_PATHS` for trusted local scripts.  
 - Gemini: set `window.GEMINI_API_KEY` or use `GEMINI_KEY_PATHS` for trusted local scripts.  
 - Manage: status bar/menu “Manage keys” handles both providers.  
@@ -62,7 +67,9 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 ---
 
 ## Troubleshooting
-- “API key is missing”: modal will reappear; enter key or switch to offline import.  
+- “API key is missing”: the modal opens for the selected provider; enter a key or switch to offline import.  
+- “Autosave failed”: the status bar warns you; use “Save Session (.json)” or “Save checkpoint (local)” to secure a copy.  
 - Diff: baseline is the first loaded/run document; view/download via Global Diff.  
 - Gemini structured output rejected: simplify the schema (reduce nesting) and ensure your Gemini key is set; the app uses `responseJsonSchema` with the same schema as OpenAI.
+- Gemini 3 Flash preview: model IDs and access can change; if you see "model not found," verify your key has preview access.
 - See token/cost logs in the menu’s run log or the browser console.

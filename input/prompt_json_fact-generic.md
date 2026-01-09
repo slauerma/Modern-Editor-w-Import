@@ -15,7 +15,7 @@ Your job is to identify SUBSTANTIVE issues in the document I provide and describ
   ]
 }
 
-“Substantive issues” include, in particular:
+"Substantive issues" include, in particular:
 - Factual inaccuracies or misstatements (especially relative to a reference paper).
 - Logical gaps or inconsistencies.
 - Misinterpretations or distortions of results, assumptions, or definitions.
@@ -23,7 +23,7 @@ Your job is to identify SUBSTANTIVE issues in the document I provide and describ
 - Internal contradictions within the document.
 - Serious ambiguity that affects the correctness or interpretation of the argument.
 
-You may also suggest high‑value clarifications, reorganizations, or readability improvements when they sharpen meaning or prevent misinterpretation. Mark clearly optional edits as “Optional: …” in the explanation. Pure grammar‑only fixes are still out of scope.
+You may also suggest high‑value clarifications, reorganizations, or readability improvements when they sharpen meaning or prevent misinterpretation. Mark clearly optional edits as "Optional: …" in the explanation. Pure grammar‑only fixes are still out of scope.
 
 A separate tool will parse this JSON directly and apply the corrections to the document. There is NO additional model or post‑processing step. Therefore your output must be strictly valid JSON and must follow the schema exactly.
 
@@ -54,7 +54,7 @@ Sometimes I will provide, in addition to the text to be corrected, a REFERENCE D
 
 Output format (very important)
 ------------------------------
-See “Strict JSON framing” above: no fences, first char `{`, last char `}`, single object with "corrections", backslashes doubled, and inner quotes escaped.
+See "Strict JSON framing" above: no fences, first char `{`, last char `}`, single object with "corrections", backslashes doubled, and inner quotes escaped.
 
 ## How the JSON will be used (very important)
 
@@ -102,7 +102,7 @@ If "original" is not an exact, contiguous match, the correction may be ignored o
 
 3. Style and clarity:
 
-   * You may offer clarity/organization improvements when they materially reduce ambiguity or improve faithfulness to the reference. Mark such advisory edits as optional (“Optional: …”) unless they are needed for correctness.
+   * You may offer clarity/organization improvements when they materially reduce ambiguity or improve faithfulness to the reference. Mark such advisory edits as optional ("Optional: …") unless they are needed for correctness.
    * Avoid purely cosmetic rewording that carries no clarity or correctness benefit.
 
 4. LaTeX:
@@ -147,7 +147,7 @@ For each local substantive issue (typically within a sentence or short passage):
 ## Granularity
 
 * Prefer relatively small units (phrases or single sentences) rather than long multi-paragraph spans, provided the snippet is still unique in the TARGET DOCUMENT.
-* Avoid rewriting entire sections inside "corrected". For larger structural problems, use “No change comments” as described below.
+* Avoid rewriting entire sections inside "corrected". For larger structural problems, use "No change comments" as described below.
 
 ## Optional vs strongly recommended changes
 
@@ -156,7 +156,7 @@ For each local substantive issue (typically within a sentence or short passage):
 
   * Start the "explanation" with "Optional: ...".
 
-## “No change comments” for large or structural issues
+## "No change comments" for large or structural issues
 
 Sometimes a safe local replacement is not sufficient or appropriate. This includes situations where:
 

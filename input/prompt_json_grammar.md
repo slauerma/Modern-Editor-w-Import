@@ -72,7 +72,7 @@ Instructions for corrections
 3. LaTeX:
    - You may assume you understand LaTeX. Just make sure not to break LaTeX syntax.
    - Do NOT change LaTeX commands, environments, labels, citations, or math in a way that would make the document invalid.
-   - If a change would require substantial LaTeX restructuring (e.g., rewriting a large formula, moving environments), do NOT change the text directly. Use a “No change comment” as described below instead.
+   - If a change would require substantial LaTeX restructuring (e.g., rewriting a large formula, moving environments), do NOT change the text directly. Use a "No change comment" as described below instead.
 
 4. For ordinary local errors (within a small phrase or sentence):
    - "original": a short snippet that contains the erroneous text plus minimal context, copied EXACTLY from the document.
@@ -87,7 +87,7 @@ Instructions for corrections
 6. Optional changes:
    - If a suggested change is optional (e.g., debatable comma placement, borderline conventions), explicitly say this in the "explanation" field, starting with "Optional: ...", e.g. "Optional: comma for readability".
 
-7. “No change comments” (important):
+7. "No change comments" (important):
    - Sometimes a local replacement is not sufficient or safe (for example, changes that would impact a large LaTeX structure or require substantial rewriting).
    - In such cases, create a correction entry where:
      - "original" = EXACT snippet from the document,

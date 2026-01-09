@@ -6,15 +6,24 @@
     return '';
   }
 
+  function formatInstructionText() {
+    if (typeof window.getFormatInstruction === 'function') {
+      return window.getFormatInstruction();
+    }
+    return '';
+  }
+
   function generatePrompt(text, rule, contextText = '') {
     const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
     const contextBlock = contextText ? `\nContext (read-only, do not edit outside the main text):\n\`\`\`\n${contextText}\n\`\`\`\n` : '';
 
     // Custom path: wrap user instructions explicitly
     if (rule.isCustom) {
       const userInstructions = rule.prompt || '';
-      return `${languageInstruction}You are a professional copy editor. It is ${currentDate}.
+      return `${baseInstruction}You are a professional copy editor. It is ${currentDate}.
 
 PRIORITY: Follow the user instructions below exactly. They define the focus, scope, and goal and override other guidance unless explicitly contradicted.
 
@@ -43,7 +52,7 @@ ${contextBlock}
     }
 
     if (rule.type === 'grammar') {
-      return `${languageInstruction}You are an elite editor on ${currentDate}. Analyze the following document for grammatical errors, typos, and spelling mistakes. Return ONLY a JSON object of the form:
+      return `${baseInstruction}You are an elite editor on ${currentDate}. Analyze the following document for grammatical errors, typos, and spelling mistakes. Return ONLY a JSON object of the form:
 {
   "corrections": [
     { "original": "...", "corrected": "...", "explanation": "...", "type": "grammar" }
@@ -64,7 +73,7 @@ ${contextBlock}
       const styleInstructions = `Do not check grammar or spelling.
 If you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).`;
 
-      return `${rule.prompt} ${languageInstruction} It is ${currentDate}.
+      return `${rule.prompt} ${baseInstruction}It is ${currentDate}.
 
 Return ONLY a JSON object of the form:
 {
@@ -88,8 +97,10 @@ ${contextBlock}
 
   function generateSimplificationPrompt(text, context) {
     const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
-    return `${languageInstruction}You are an elite editor on ${currentDate}. The following text may come from an academic article (in which case act like an editor for academically precise content where you still care about good, easy-to-read writing), or general writing. Simplify the following text passage. Provide exactly THREE versions:
+    return `${baseInstruction}You are an elite editor on ${currentDate}. The following text may come from an academic article (in which case act like an editor for academically precise content where you still care about good, easy-to-read writing), or general writing. Simplify the following text passage. Provide exactly THREE versions:
 
 1. Same Length: Use simpler words and shorter sentences, but keep approximately the same length. Do NOT replace technical terms if they have precise definitions, but do make the writing snappier and less unwieldy, like a great editor would.
 2. Moderately Shorter: Do the same as in step 1, but reduce length by about 30% while maintaining all key information
@@ -114,8 +125,10 @@ ${context}
 
   function generateProofCheckPrompt(proofText, fullDocument) {
     const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
-    return `${languageInstruction}Act like a very well-trained technical graduate student on ${currentDate}. Check the validity of the following mathematical proof or logical argument. Analyze it for:
+    return `${baseInstruction}Act like a very well-trained technical graduate student on ${currentDate}. Check the validity of the following mathematical proof or logical argument. Analyze it for:
 - Logical errors or gaps in reasoning
 - Missing steps or assumptions
 - Incorrect applications of theorems or definitions
@@ -141,9 +154,11 @@ ${fullDocument}
 
   function generateCustomAskPrompt(text, contextText, instruction) {
     const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
     const contextBlock = contextText ? `\nContext (read-only, do not edit outside the main text):\n\`\`\`\n${contextText}\n\`\`\`\n` : '';
-    return `${languageInstruction}You are an elite editor on ${currentDate}. Follow the user's instruction for improving or commenting on the SELECTED TEXT ONLY. Return ONLY a JSON object of the form:
+    return `${baseInstruction}You are an elite editor on ${currentDate}. Follow the user's instruction for improving or commenting on the SELECTED TEXT ONLY. Return ONLY a JSON object of the form:
 {
   "comment": "summary of your advice or rewrite suggestions for the selected text",
   "suggestions": ["bullet 1", "bullet 2"] // provide an array (can be empty)
