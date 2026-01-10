@@ -19,7 +19,7 @@ Strict JSON framing (very important)
    - "corrected"
    - "explanation"
    - "type"
-6. The value of "type" MUST ALWAYS be the literal string "style".
+6. The value of "type" MUST be either "style" or "comment".
 7. Escape every literal backslash as `\\` (e.g., `\cite` → `\\cite`) so substrings match the source.
 8. Escape any inner double quotes as `\"` (or prefer single quotes inside explanations).
 9. No trailing commas; standard JSON rules apply.
@@ -34,7 +34,7 @@ Improve the flow, clarity, and overall style of the document, and flag potential
       "original": "string",
       "corrected": "string",
       "explanation": "string",
-      "type": "style"
+      "type": "style" | "comment"
     }
   ]
 }
@@ -81,17 +81,17 @@ INSTRUCTIONS
      - When a reference document is provided and the main document is factually inaccurate, you may also adjust the wording to restore correctness, as long as you can do this with a reasonably local change.
    - Keep changes as local as possible; do not rewrite entire sections when a sentence‑level improvement suffices.
 
-5. "No‑change comments" (for large or non‑local suggestions)
+5. Comment-only notes (for large or non-local suggestions)
    - Some issues cannot be fixed safely with a local replacement (for example):
      - The argument of an entire paragraph is logically weak or incoherent.
      - The summary fundamentally misrepresents a section of the reference document.
      - Fixing the problem would require substantial restructuring or cross‑section changes.
      - Changing LaTeX/math structure in a way that risks breaking compilation.
-   - In such cases, create a "no‑change comment" entry:
+   - In such cases, create a comment entry:
      - `"original"`: choose a short snippet from the main document that anchors the problematic passage (as above, exact contiguous substring).
      - `"corrected"`: set this to be IDENTICAL to `"original"` (exact same text).
-     - `"explanation"`: clearly explain what the author should do manually (e.g. "No change comment: this paragraph oversimplifies Theorem 2 compared to the original paper; please revise to include the assumptions about convexity.").
-     - `"type"`: `"style"`.
+     - `"explanation"`: clearly explain what the author should do manually (e.g. "This paragraph oversimplifies Theorem 2 compared to the original paper; revise to include the assumptions about convexity.").
+     - `"type"`: `"comment"`.
    - Use these sparingly but systematically whenever a safe automatic rewrite is not possible.
 
 6. The `"explanation"` field
@@ -102,10 +102,10 @@ INSTRUCTIONS
    - For optional or subjective suggestions, mark this explicitly, e.g.:
      - "Optional: slightly more concise phrasing."
      - "Optional: smoother transition between paragraphs."
-   - For "no‑change comments", make it clear that the text is unchanged and the author must act manually.
+   - For comment-only notes, make it clear that the text is unchanged and the author must act manually.
 
 7. The `"type"` field
-   - Always set `"type"` to the literal string `"style"` for every entry, including "no‑change comments".
+   - Use `"style"` for actual edits and `"comment"` for note-only entries (corrected == original).
 
 8. Ordering and granularity
    - List corrections in document order, from top to bottom.

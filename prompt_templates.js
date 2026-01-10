@@ -20,10 +20,11 @@
     grammar: 'If no errors are found, return {"corrections": []}.',
     style: 'In the rare case that no improvements are needed, return {"corrections": []}.'
   };
-  const CUSTOM_COMMENT_GUIDANCE = 'Use type: "comment" (with original == corrected) for no-change notes or questions; place the note in the explanation.';
-  const LATEX_EDIT_GUIDANCE = 'If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, use a no-change comment (original == corrected) and explain.';
+  const CUSTOM_COMMENT_GUIDANCE = 'Use type: "comment" (with original == corrected) for notes or questions; place the note in the explanation.';
+  const LATEX_EDIT_GUIDANCE = 'If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, add a comment-only note instead of editing (type "comment", corrected == original).';
+  const LOCALIZATION_RULE = 'Localization rule (non-conservative): Make edits granular and anchor them to the smallest standalone span (typically a sentence). Split broad comments into multiple targeted corrections. If several edits belong to one rewrite, note that in the first explanation.';
   const GRAMMAR_ORDER_LINE = 'Important: Return the list of corrections in the order they appear in the document. DOUBLE CHECK THAT SUGGESTIONS YOU MAKE ACTUALLY REQUIRE A CORRECTION - NEVER SUGGEST "No change needed" OR SIMILAR!';
-  const GRAMMAR_FOCUS_GUIDANCE = 'Focus only on clear errors which are unambiguous. DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. Do not suggest changes for LaTeX commands (like \\\\documentclass), including opening or closing brackets, and do not correct single vs. double spaces. Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors.';
+  const GRAMMAR_FOCUS_GUIDANCE = 'Focus only on clear errors which are unambiguous. DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. You may suggest changes for LaTeX commands (like \\\\documentclass) when needed; keep LaTeX valid and avoid large restructuring. Do not correct single vs. double spaces. Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors.';
 
   function buildJsonExample(typeLabel) {
     return `{\n  "corrections": [\n    { "original": "...", "corrected": "...", "explanation": "...", "type": "${typeLabel}" }\n  ]\n}`;
@@ -67,7 +68,8 @@
   }) {
     const jsonBullets = buildJsonBulletGuidance('style', [
       LATEX_EDIT_GUIDANCE,
-      CUSTOM_COMMENT_GUIDANCE
+      CUSTOM_COMMENT_GUIDANCE,
+      LOCALIZATION_RULE
     ]);
     const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : '\n\n';
     return `${baseInstruction}You are a professional copy editor. It is ${currentDate}.${boundaryBlock}
@@ -93,7 +95,7 @@ ${text}
     text,
     docLabel
   }) {
-    const jsonGuidance = buildJsonParagraphGuidance('grammar', [GRAMMAR_FOCUS_GUIDANCE], {
+    const jsonGuidance = buildJsonParagraphGuidance('grammar', [GRAMMAR_FOCUS_GUIDANCE, LOCALIZATION_RULE], {
       orderLine: GRAMMAR_ORDER_LINE
     });
     const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : ' ';
@@ -112,13 +114,18 @@ ${text}
     currentDate,
     boundaryGuidance,
     text,
-    docLabel
+    docLabel,
+    allowGrammar = false
   }) {
-    const styleInstructions = `Do not check grammar or spelling.\nIf you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).`;
-    const jsonGuidance = buildJsonParagraphGuidance('style', [
-      styleInstructions,
+    const styleInstructions = allowGrammar
+      ? ''
+      : 'Do not do a general grammar or spelling pass. Only fix grammar/spelling when it is needed to carry out the style instructions or to remove ambiguity.\nIf you have speculative or alternative phrasings, choose one concrete best correction in "corrected" and mention other options in the explanation. Use type: "comment" only for non-local/global notes (not for ordinary sentence-level edits).';
+    const guidanceLines = [
+      ...(styleInstructions ? [styleInstructions] : []),
+      LOCALIZATION_RULE,
       LATEX_EDIT_GUIDANCE
-    ]);
+    ];
+    const jsonGuidance = buildJsonParagraphGuidance('style', guidanceLines);
     const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : '\n\n';
     const prefix = rulePrompt ? `${rulePrompt} ` : '';
     return `${prefix}${baseInstruction}It is ${currentDate}.${boundaryBlock}${jsonGuidance}
@@ -165,7 +172,8 @@ ${text}
         currentDate,
         boundaryGuidance: '',
         text,
-        docLabel: 'Document to analyze:'
+        docLabel: 'Document to analyze:',
+        allowGrammar: !!rule.allowGrammar
       })}${contextBlock}`;
     }
   }
@@ -187,7 +195,7 @@ ${text}
 - This is chunk ${chunkIndex + 1} of ${chunkCount}.
 - Messages 1/3 and 3/3 are read-only context; only edit the text in Message 2/3.
 - The marker "CHUNK CONTINUES" indicates the text is truncated at a boundary; do NOT complete or infer missing text.
-- If a sentence or LaTeX environment is cut off at a boundary, do not rewrite it. If needed, add a comment with original == corrected noting the truncation.`;
+- If a sentence or LaTeX environment is cut off at a boundary, do not rewrite it. If needed, add a comment entry (type "comment", corrected == original) noting the truncation.`;
     const beforeMarker = contextBefore ? 'CHUNK CONTINUES.' : 'START OF DOCUMENT.';
     const afterMarker = contextAfter ? 'CHUNK CONTINUES.' : 'END OF DOCUMENT.';
     const beforeBlock = contextBefore
@@ -230,7 +238,8 @@ ${beforeMarker}${extraBlock}`;
         currentDate,
         boundaryGuidance,
         text,
-        docLabel: 'Editable Chunk (Message 2/3):'
+        docLabel: 'Editable Chunk (Message 2/3):',
+        allowGrammar: !!rule.allowGrammar
       });
     }
 
@@ -380,10 +389,13 @@ ${contextBlock}
       };
     }
 
-    const correctionType = type === 'grammar' ? 'grammar' : 'style';
+    const allowedTypes = type === 'mixed'
+      ? ['grammar', 'style', 'comment']
+      : [type === 'grammar' ? 'grammar' : 'style', 'comment'];
+    const schemaName = type === 'mixed' ? 'CorrectionsResponseMixed' : 'CorrectionsResponse';
 
     return {
-      name: 'CorrectionsResponse',
+      name: schemaName,
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -397,7 +409,7 @@ ${contextBlock}
                 original: { type: 'string' },
                 corrected: { type: 'string' },
                 explanation: { type: 'string' },
-                type: { type: 'string', enum: [correctionType, 'comment'] }
+                type: { type: 'string', enum: allowedTypes }
               },
               required: ['original', 'corrected', 'explanation', 'type']
             }

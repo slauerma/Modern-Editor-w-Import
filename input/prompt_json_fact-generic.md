@@ -10,7 +10,7 @@ Your job is to identify SUBSTANTIVE issues in the document I provide and describ
       "original": "string",
       "corrected": "string",
       "explanation": "string",
-      "type": "content"
+      "type": "content" | "comment"
     }
   ]
 }
@@ -38,7 +38,7 @@ Strict JSON framing (very important)
    - "corrected"
    - "explanation"
    - "type"
-6. The value of "type" MUST ALWAYS be the literal string "content".
+6. The value of "type" MUST be either "content" or "comment".
 7. Escape every literal backslash as `\\` (e.g., `\cite` in the document becomes `\\cite` in JSON).
 8. Escape any inner double quotes in strings as `\"` (or use single quotes inside explanations).
 9. No trailing commas; standard JSON rules apply.
@@ -107,8 +107,8 @@ If "original" is not an exact, contiguous match, the correction may be ignored o
 
 4. LaTeX:
 
-   * Do NOT break LaTeX syntax.
-   * Do NOT change LaTeX commands, environments, labels, citations, or math structures in a way that would make the document invalid.
+   * Do not break LaTeX syntax; keep it valid.
+   * You may change LaTeX commands, environments, labels, citations, or math structures when needed; keep the document valid.
    * Inside math mode ($...$, (...), [...], equation environments), only adjust content when it is clearly mathematically wrong or inconsistent with the REFERENCE DOCUMENT.
    * When possible, keep mathematical notation and structure unchanged and fix only the surrounding prose, unless the formula itself is clearly incorrect.
 
@@ -128,7 +128,7 @@ For each local substantive issue (typically within a sentence or short passage):
     * Fixes factual inaccuracies or logical errors.
     * Aligns the claim with the REFERENCE DOCUMENT when applicable.
     * Preserves the intended meaning as much as possible while making it correct.
-  * Keep LaTeX intact except where a symbol or expression is genuinely wrong.
+  * Keep LaTeX changes minimal; only change when a symbol or expression is genuinely wrong.
 
 * "explanation":
 
@@ -142,12 +142,12 @@ For each local substantive issue (typically within a sentence or short passage):
 
 * "type":
 
-  * Always "content".
+  * Use "content" for actual edits and "comment" for note-only entries (corrected == original).
 
 ## Granularity
 
 * Prefer relatively small units (phrases or single sentences) rather than long multi-paragraph spans, provided the snippet is still unique in the TARGET DOCUMENT.
-* Avoid rewriting entire sections inside "corrected". For larger structural problems, use "No change comments" as described below.
+* Avoid rewriting entire sections inside "corrected". For larger structural problems, use comment entries as described below.
 
 ## Optional vs strongly recommended changes
 
@@ -156,7 +156,7 @@ For each local substantive issue (typically within a sentence or short passage):
 
   * Start the "explanation" with "Optional: ...".
 
-## "No change comments" for large or structural issues
+## Comment-only notes for large or structural issues
 
 Sometimes a safe local replacement is not sufficient or appropriate. This includes situations where:
 
@@ -165,14 +165,15 @@ Sometimes a safe local replacement is not sufficient or appropriate. This includ
 * The organisation of ideas makes the logic very hard to follow.
 * A correct treatment would require introducing new notation, assumptions, or a substantial amount of new text.
 
-In such cases, create a correction entry where:
+In such cases, create a comment entry where:
 
 * "original" = EXACT snippet from the TARGET DOCUMENT (e.g., a full sentence, theorem statement, or short paragraph that exemplifies the issue),
 * "corrected" = EXACTLY the same string as "original",
-* "explanation" begins with the exact string "No change comment: " and then clearly describes what the author should do manually. Examples:
+* "explanation" clearly describes what the author should do manually. Examples:
 
-  * "No change comment: This paragraph misstates the main result; rewrite using the formulation in Theorem 2 of the reference paper."
-  * "No change comment: The proof omits the case k=0; add a separate argument for this case to make the proof complete."
+  * "This paragraph misstates the main result; rewrite using the formulation in Theorem 2 of the reference paper."
+  * "The proof omits the case k=0; add a separate argument for this case to make the proof complete."
+* "type" = "comment".
 
 These entries give manual guidance without changing the text. Use them sparingly, only when a safe local correction is not possible.
 
@@ -187,9 +188,9 @@ These entries give manual guidance without changing the text. Use them sparingly
 * Each element of "corrections":
   {
   "original": "<exact snippet from TARGET DOCUMENT>",
-  "corrected": "<content-corrected snippet, or same text for a No change comment>",
-  "explanation": "<brief explanation; clearly indicate optional changes and No change comments>",
-  "type": "content"
+  "corrected": "<content-corrected snippet, or same text for a comment-only note>",
+  "explanation": "<brief explanation; clearly indicate optional changes>",
+  "type": "content" | "comment"
   }
 
 If you find no clear substantive issues to correct, return exactly:

@@ -3,6 +3,7 @@
     if (typeof value !== 'string') return '';
     return shouldTrim ? value.trim() : value;
   }
+  const LOCALIZATION_RULE = 'Localization rule (non-conservative): Make edits granular and anchor them to the smallest standalone span (typically a sentence). Split broad comments into multiple targeted corrections. If several edits belong to one rewrite, note that in the first explanation.';
 
   const DEEP_AUDIT_PROMPT_FALLBACK = `You are a mathematically sophisticated referee in mathematical economics.
 
@@ -240,21 +241,26 @@ Do not shortcut reasoning. Treat this as a deep technical referee task:
   window.generateCommentsImportPrompt = function generateCommentsImportPrompt({
     documentText = '',
     commentsText = '',
-    languageInstruction = ''
+    languageInstruction = '',
+    extraInstruction = ''
   } = {}) {
     const doc = normalizeInput(documentText, false);
     const comments = normalizeInput(commentsText);
     const instruction = typeof languageInstruction === 'string' ? languageInstruction : '';
+    const extra = typeof extraInstruction === 'string' && extraInstruction.trim()
+      ? `\n${extraInstruction.trim()}\n`
+      : '';
     const today = new Date().toISOString().split('T')[0];
 
-    return `${instruction}You are an elite academic copy editor on ${today}. Your task: read the author's document and the free-form reviewer comments, then translate those comments into precise, structured edits that anchor to exact spans of the document. Think of this as “turn reviewer notes into clickable, localized corrections.”
+    return `${instruction}You are an expert editor on ${today}. Your task: read the author's document and the free-form reviewer comments, then translate those comments into precise, structured edits that anchor to exact spans of the document. Think of this as “turn reviewer notes into clickable, localized corrections.”${extra}
 
 Requirements:
 - Use the exact text from the document inside each "original" field; it MUST match a span in the document.
-- Provide the corrected wording in "corrected". When the comment simply praises or requests no change, keep "corrected" identical to "original" and begin the explanation with "No change comment:" followed by the reviewer note. Entries with type "comment" are treated as notes only.
-- Keep LaTeX commands, equations, and formatting intact—do not suggest edits to LaTeX syntax.
-- Split broad comments into multiple targeted corrections when necessary so each entry maps to a specific span.
-- Every entry must set "type" to "grammar" or "comment" (use "comment" for no-change notes).
+- Provide the corrected wording in "corrected". For praise or note-only items, set type to "comment" and keep "corrected" identical to "original"; explain briefly. Entries with type "comment" are treated as notes only.
+- You may edit LaTeX commands, equations, and formatting when needed; keep LaTeX valid and avoid unnecessary changes.
+- ${LOCALIZATION_RULE}
+- Every entry must set "type" to "grammar", "style", or "comment" (use "comment" for note-only items).
+- Use "grammar" for local fixes (spelling, punctuation) and "style" for rewrites or wording improvements.
 - If no actionable edits exist, return a JSON object with an empty "corrections" array: {"corrections": []}.
 - Output MUST be valid JSON and escape backslashes (e.g., \\\\cite).
 
@@ -316,7 +322,8 @@ ${comments}
 OVERVIEW COMMENT (required):
 - The FIRST item in "corrections" MUST be a comment-only overview.
 - type = "comment" and corrected MUST equal original exactly.
-- explanation begins with "[Overview]" and gives 3-6 bullet points of the main issues.
+- explanation begins with "[Overview]" on its own line, then 3-6 bullets.
+- Put each bullet on its own line starting with "- ".
 - Anchor it to a short quote from the target statement or the first sentence of the proof.
 
 COMMENT SCAFFOLDING (recommended):
@@ -334,8 +341,10 @@ Requirements:
 - Output MUST be strict JSON with a top-level "corrections" array, and nothing else.
 - Each "original" must be an exact, contiguous substring of the manuscript text.
 - If you cannot find an exact substring for an item, drop it (do not output it).
+- Return corrections in the order they appear in the manuscript.
 - Use type "comment" with corrected == original for high-level notes or warnings.
-- Keep LaTeX commands intact and escape backslashes (e.g., \\\\cite).
+- ${LOCALIZATION_RULE}
+- Ensure LaTeX remains valid and escape backslashes (e.g., \\\\cite).
 - If no actionable items exist, return {"corrections": []}.
 
 Return ONLY:

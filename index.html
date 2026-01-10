@@ -14,6 +14,7 @@
 <script src="input/loading_tips.js" defer></script>
 <script src="sample_text.js" defer></script>
 <script src="prompt_templates.js" defer></script>
+<script src="run_history.js" defer></script>
 <script src="app.js" defer></script>
 <style>
 /* ───── Basics ───── */
@@ -57,6 +58,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  align-items: flex-start;
   width: auto;
 }
 
@@ -373,6 +375,25 @@ body {
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.menu-submenu {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 12px;
+  margin: 8px 0 16px 0;
+  border-left: 2px solid var(--border-color);
+}
+
+.menu-submenu.open {
+  display: flex;
+}
+
+.menu-submenu .menu-item {
+  margin-bottom: 0;
 }
 
 /* Hamburger Menu */
@@ -505,6 +526,26 @@ body {
   cursor: pointer;
 }
 
+.info-icon {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: #333;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.info-icon:hover {
+  background: #f0f0f0;
+}
+
 .menu-select-group {
   margin-top: 16px;
   padding: 0 16px;
@@ -523,6 +564,32 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 0.9rem;
+}
+
+.chunk-size-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chunk-size-row select {
+  flex: 1 1 auto;
+}
+
+.chunk-size-row input {
+  width: 120px;
+}
+
+.status-warning {
+  background: #fff7ed;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.api-key-persist {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: #444;
 }
 
 .status-bar {
@@ -774,6 +841,7 @@ body {
   background: #f5f5f5;
   padding: 8px 12px;
   border-radius: 4px;
+  white-space: pre-line;
 }
 
 .popover-diff del {
@@ -1259,6 +1327,33 @@ body {
   font-size: 0.85rem;
 }
 
+.support-files-index {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.support-files-index-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.support-files-index-list {
+  margin-top: 6px;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.support-files-index-item {
+  margin-bottom: 4px;
+}
+
 .support-files-row {
   display: flex;
   align-items: center;
@@ -1420,18 +1515,24 @@ body {
 <!-- Header -->
 <div class="header">
   <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu" aria-controls="hamburgerMenu" aria-expanded="false">☰</button>
-  <button class="nav-btn icon-btn" id="copyBtn" title="Copy Text" aria-label="Copy text">
-    <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-    <svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-  </button>
-  <button class="nav-btn icon-btn" id="downloadBtn" title="Download as .txt" aria-label="Download text">
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-  </button>
+  <div class="header-actions">
+    <button class="nav-btn icon-btn" id="copyBtn" title="Copy Text" aria-label="Copy text">
+      <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </button>
+    <button class="nav-btn icon-btn" id="downloadBtn" title="Download as .txt" aria-label="Download text">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    </button>
+    <button class="nav-btn icon-btn" id="uploadBtn" title="Upload new document for editing" aria-label="Upload new document for editing">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+    </button>
+  </div>
 
   <!-- Wrapper for analysis buttons to add the line above -->
   <div class="analysis-controls">
     <button class="selection-btn analyze-btn" id="analyzeGrammarBtn">Grammar</button>
     <button class="selection-btn analyze-btn" id="analyzeStyleBtn">Style</button>
+    <button class="selection-btn analyze-btn" id="analyzeEverythingBtn">Everything</button>
     <button class="selection-btn analyze-btn" id="customPromptBtn">Custom Task</button>
     <button class="selection-btn analyze-btn" id="importOptionsBtn">Import Comments</button>
     <button class="selection-btn analyze-btn" id="deepAuditBtn">Deep Audit</button>
@@ -1483,18 +1584,23 @@ body {
   </div>
   <div class="menu-content">
     <button class="menu-item" id="helpBtn" style="background-color:#000000; color:#FFFFFF;">Help</button>
+    <button class="menu-item" id="fileMenuBtn" style="background-color:#000000; color:#FFFFFF;" aria-expanded="false" aria-controls="fileSubmenu">File</button>
+    <div class="menu-submenu" id="fileSubmenu">
+      <button class="menu-item" id="newDocBtn">Load New Document</button>
+      <button class="menu-item" id="saveSessionBtn">Save Session (.json)</button>
+      <button class="menu-item" id="loadSessionBtn">Load Session (.json)</button>
+      <button class="menu-item" id="saveCheckpointBtn">Save checkpoint (local)</button>
+      <button class="menu-item" id="restoreCheckpointBtn">Restore checkpoint (local)</button>
+      <button class="menu-item" id="downloadDiffBtn">Download Global Diff (.txt)</button>
+      <button class="menu-item" id="downloadLastRunsBtn">Download all last runs</button>
+    </div>
     <hr class="menu-divider">
-    <button class="menu-item" id="newDocBtn">Load New Document</button>
-    <button class="menu-item" id="saveSessionBtn">Save Session (.json)</button>
-    <button class="menu-item" id="loadSessionBtn">Load Session (.json)</button>
-    <button class="menu-item" id="saveCheckpointBtn">Save checkpoint (local)</button>
-    <button class="menu-item" id="restoreCheckpointBtn">Restore checkpoint (local)</button>
-    <button class="menu-item" id="supportFilesBtn">Supporting files…</button>
+    <button class="menu-item" id="supportFilesBtn">Upload supporting files</button>
     <button class="menu-item" id="lastRunLogBtn">Show Last Prompt/Response</button>
+    <button class="menu-item" id="runHistoryBtn">Run history: Temporary</button>
     <button class="menu-item" id="deepAuditReportBtn">Deep Audit Report</button>
     <button class="menu-item" id="manageKeysBtn">API keys / status…</button>
     <button class="menu-item" id="viewDiffBtn">View Global Diff</button>
-    <button class="menu-item" id="downloadDiffBtn">Download Global Diff (.txt)</button>
     <hr class="menu-divider">
     <div class="menu-select-group">
       <select id="ruleSelect" style="display: none;">
@@ -1502,76 +1608,80 @@ body {
       </select>
     </div>
     <div class="menu-select-group">
-      <label for="languageSelect">Language:</label>
-      <select id="languageSelect">
-        <option value="en-US">English (US)</option>
-        <option value="en-CAN">English (CAN)</option>
-        <option value="en-UK">English (UK)</option>
-        <option value="fr">French</option>
-        <option value="es">Spanish</option>
-        <option value="de">German</option>
-        <option value="ca">Catalan</option>
-      </select>
-    </div>
-    <div class="menu-select-group">
-      <label for="formatSelect">Format:</label>
-      <select id="formatSelect">
-        <option value="latex">LaTeX</option>
-        <option value="markdown">Markdown</option>
-        <option value="plain">Plain text</option>
-      </select>
-    </div>
-    <div class="menu-select-group">
-      <label for="styleSelect">Style Rule:</label>
-      <select id="styleSelect" class="menu-style-select">
-        <!-- Options will be populated from styles.js -->
-      </select>
-      <div id="styleRulesHint" class="shortcut-hint" style="margin-top:6px; display:none;"></div>
-    </div>
-    <div class="menu-select-group">
-      <label for="modelFamilySelect">Model family:</label>
+      <label for="modelFamilySelect" class="sr-only">Model family:</label>
       <select id="modelFamilySelect">
         <!-- Options populated in script -->
       </select>
     </div>
     <div class="menu-select-group">
-      <label for="reasoningSelect">Reasoning effort:</label>
+      <label for="reasoningSelect" class="sr-only">Reasoning effort:</label>
       <select id="reasoningSelect">
         <!-- Options depend on the selected family -->
       </select>
     </div>
     <div class="menu-select-group">
-      <label for="chunkSizeInput">Max chunk size (chars):</label>
-      <input id="chunkSizeInput" type="number" min="1000" step="1000" value="30000" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; font-size:0.9rem;">
-    </div>
-    <div class="menu-select-group">
-      <label for="parallelismInput">Max parallel calls:</label>
-      <input id="parallelismInput" type="number" min="1" max="6" step="1" value="1" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; font-size:0.9rem;">
-    </div>
-    <div class="menu-select-group">
-      <div class="menu-toggle">
-        <input type="checkbox" id="autoChunkToggle">
-        <label for="autoChunkToggle" style="margin:0;">Auto chunk size (optimize for parallel)</label>
+      <label for="chunkSizeMode">Chunk size:</label>
+      <div class="chunk-size-row">
+        <select id="chunkSizeMode">
+          <option value="auto">Auto for parallel</option>
+          <option value="fixed">Fixed max size</option>
+        </select>
+        <input id="chunkSizeInput" type="number" min="1000" step="1000" value="30000" placeholder="Max chars" aria-label="Max chunk size (chars)" style="padding:8px; border:1px solid var(--border-color); border-radius:4px; font-size:0.9rem;">
+        <button type="button" class="info-icon" id="autoChunkInfoBtn" aria-label="Auto chunking info" aria-expanded="false" aria-controls="autoChunkHint">i</button>
       </div>
       <div id="autoChunkHint" class="shortcut-hint" style="margin-top:6px; display:none;"></div>
     </div>
-    <div class="menu-section" id="apiKeyInfo">
-      <div id="openaiKeyInfoText" class="api-key-info-line"></div>
-      <div id="geminiKeyInfoText" class="api-key-info-line"></div>
+    <div class="menu-select-group">
+      <label for="parallelismInput" class="sr-only">Parallel calls:</label>
+      <select id="parallelismInput">
+        <option value="1">Parallel calls: None</option>
+        <option value="2">Parallel calls: 2</option>
+        <option value="3">Parallel calls: 3</option>
+        <option value="4">Parallel calls: 4</option>
+        <option value="5">Parallel calls: 5</option>
+        <option value="6">Parallel calls: 6</option>
+        <option value="7">Parallel calls: 7</option>
+        <option value="8">Parallel calls: 8</option>
+        <option value="9">Parallel calls: 9</option>
+        <option value="10">Parallel calls: 10</option>
+      </select>
     </div>
     <div class="menu-select-group">
-      <label>Tools (GPT-5.2 thinking family only):</label>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:4px;">
-        <label style="font-weight:400; font-size:0.85rem;">
-          <input type="checkbox" id="toolWebSearch">
-          Web search
-        </label>
-        <label style="font-weight:400; font-size:0.85rem;">
-          <input type="checkbox" id="toolCodeInterpreter">
-          Python (Code Interpreter)
-        </label>
-      </div>
+      <label for="toolsModeSelect" class="sr-only">Tools:</label>
+      <select id="toolsModeSelect">
+        <option value="none" data-label="Tools: none">Tools: none</option>
+        <option value="web" data-label="Tools: web">Tools: web</option>
+        <option value="python" data-label="Tools: python">Tools: python</option>
+        <option value="both" data-label="Tools: web + python">Tools: web + python</option>
+      </select>
       <div id="toolSupportHint" class="shortcut-hint" style="margin-top:6px; display:none;"></div>
+    </div>
+    <div class="menu-select-group">
+      <label for="languageSelect" class="sr-only">Language:</label>
+      <select id="languageSelect">
+        <option value="en-US" data-label="English (US)">Language: English (US)</option>
+        <option value="en-CAN" data-label="English (CAN)">Language: English (CAN)</option>
+        <option value="en-UK" data-label="English (UK)">Language: English (UK)</option>
+        <option value="fr" data-label="French">Language: French</option>
+        <option value="es" data-label="Spanish">Language: Spanish</option>
+        <option value="de" data-label="German">Language: German</option>
+        <option value="ca" data-label="Catalan">Language: Catalan</option>
+      </select>
+    </div>
+    <div class="menu-select-group">
+      <label for="formatSelect" class="sr-only">Format:</label>
+      <select id="formatSelect">
+        <option value="latex" data-label="LaTeX">Format: LaTeX</option>
+        <option value="markdown" data-label="Markdown">Format: Markdown</option>
+        <option value="plain" data-label="Plain text">Format: Plain text</option>
+      </select>
+    </div>
+    <div class="menu-select-group">
+      <label for="styleSelect" class="sr-only">Style Rule:</label>
+      <select id="styleSelect" class="menu-style-select">
+        <!-- Options will be populated from styles.js -->
+      </select>
+      <div id="styleRulesHint" class="shortcut-hint" style="margin-top:6px; display:none;"></div>
     </div>
   </div>
 </div>
@@ -1585,6 +1695,9 @@ body {
       <button id="tryExampleBtn" class="status-secondary-btn" type="button">Try example (offline)</button>
       <button id="apiStatusManageBtn" class="status-manage-btn" type="button">Manage keys</button>
     </div>
+  </div>
+  <div id="apiPersistWarning" class="status-bar status-warning" style="display:none;">
+    Warning: API keys are stored locally on this device (obfuscated, not secure). Clear them via Manage keys if needed.
   </div>
   <div id="saveStatusBar" class="status-bar" role="status" aria-live="polite" style="display: none;">
     <span id="saveStatusText"></span>
@@ -1654,6 +1767,7 @@ body {
     <div class="import-choice-grid">
       <button class="selection-btn analyze-btn" id="importStructuredBtn">Import Structured JSON (offline)</button>
       <button class="selection-btn analyze-btn" id="importUnstructuredBtn">Import Unstructured Comments</button>
+      <button class="selection-btn analyze-btn" id="importRefineBtn">Import refine.ink Comments</button>
       <button class="selection-btn analyze-btn" id="importExampleBtn">Example (offline)</button>
     </div>
     <p class="import-tip">Example loads the sample document and sample corrections so you can see how highlights look without calling the API.</p>
@@ -1711,17 +1825,19 @@ body {
 <div class="modal-overlay" id="commentsOverlay"></div>
 <div class="summary-modal" id="commentsModal" role="dialog" aria-modal="true" aria-labelledby="commentsTitle" tabindex="-1">
   <button class="summary-close" id="commentsClose" aria-label="Close dialog">×</button>
-  <h2 id="commentsTitle">Import Comments <span class="summary-esc-hint">(Esc to close)</span></h2>
+  <h2 id="commentsTitle"><span id="commentsTitleText">Import Comments</span> <span class="summary-esc-hint">(Esc to close)</span></h2>
   <div class="summary-section">
-    <p style="color:#666; font-size:0.85rem;">
-      Paste informal or unstructured review comments here. We will send your current document and these comments to the model to turn them into structured JSON corrections (type: "grammar", including "No change comment" entries when appropriate).
+    <p id="commentsIntro" style="color:#666; font-size:0.85rem;">
+      Paste unstructured review comments here. We will convert them into structured corrections for the current document.
     </p>
-    <p style="color:#666; font-size:0.85rem;">
-      Suggested prompt: <code>Be a good copy editor and make some suggestions. Keep this local. Output format as a table: original sentence left, discussion middle, suggestion right.</code>
+    <div id="commentsModeHint" class="shortcut-hint" style="margin-top:6px;"></div>
+    <p id="commentsStandardDetails" style="color:#666; font-size:0.85rem;">
+      Template: <a href="input/prompt_import_comments.md" target="_blank" rel="noopener" data-new-tab="true">prompt_import_comments.md</a>
       <br><br>
-      Prompt template: <a href="input/prompt_import_comments.md" target="_blank" rel="noopener" data-new-tab="true">comments</a>
-      <br><br>
-      Example freeform comments you can paste: <a href="input/example-unstructured-comments.md" target="_blank" rel="noopener" data-new-tab="true">example-unstructured-comments.md</a>
+      Example: <a href="input/example-unstructured-comments.md" target="_blank" rel="noopener" data-new-tab="true">example-unstructured-comments.md</a>
+    </p>
+    <p id="commentsRefineDetails" style="color:#666; font-size:0.85rem; display:none;">
+      Include IDs (if present) and comment text. We will keep IDs and map them to structured corrections.
     </p>
   </div>
   <div class="summary-section">
@@ -1749,20 +1865,29 @@ body {
     <div class="deep-audit-hint">Automatically populated if some part of the paper is highlighted.</div>
     <div class="deep-audit-actions">
       <button class="popover-btn" id="deepAuditPromptBtn">View / Edit Prompt</button>
+      <button class="popover-btn" id="deepAuditLastReportBtn">View last report</button>
+    </div>
+    <div class="deep-audit-select-group">
+      <label for="deepAuditModeSelect">Audit mode</label>
+      <select id="deepAuditModeSelect">
+        <option value="full">Full (report + structured corrections)</option>
+        <option value="report">Report only (fast)</option>
+      </select>
     </div>
     <div class="deep-audit-select-group">
       <label for="deepAuditR1Select">R1 report model</label>
       <select id="deepAuditR1Select">
-        <option value="gpt5_high">GPT-5.2 (High)</option>
-        <option value="gpt5_xhigh">GPT-5.2 (Extra high)</option>
-        <option value="gpt5_pro">GPT-5.2-pro (Extra high)</option>
+        <option value="gpt5_low">GPT-5.2 - Low</option>
+        <option value="gpt5_high">GPT-5.2 - High</option>
+        <option value="gpt5_xhigh">GPT-5.2 - Extra high</option>
+        <option value="gpt5_pro">GPT-5.2-pro - Extra high</option>
       </select>
     </div>
     <div class="deep-audit-select-group">
       <label for="deepAuditR2Select">R2 structurer model</label>
       <select id="deepAuditR2Select">
-        <option value="gpt5_high">GPT-5.2 (High)</option>
-        <option value="gpt5_xhigh">GPT-5.2 (Extra high)</option>
+        <option value="gpt5_high">GPT-5.2 - High</option>
+        <option value="gpt5_xhigh">GPT-5.2 - Extra high</option>
       </select>
     </div>
     <label class="deep-audit-toggle">
@@ -1790,7 +1915,7 @@ body {
   </div>
   <div class="popover-actions">
     <button class="popover-btn" id="deepAuditReportCopyBtn">Copy report</button>
-    <button class="popover-btn" id="deepAuditReportExportBtn" disabled>Export (later)</button>
+    <button class="popover-btn" id="deepAuditReportExportBtn">Export report</button>
     <button class="popover-btn reject" id="deepAuditReportDismissBtn">Close</button>
   </div>
 </div>
@@ -1826,12 +1951,13 @@ body {
   <button class="summary-close" id="customPromptClose" aria-label="Close dialog">×</button>
   <h2 id="customPromptTitle">Custom / User Instructions <span class="summary-esc-hint">(Esc to close)</span></h2>
   <div class="summary-section">
-    <p style="color:#666; font-size:0.9rem;">Describe how you want the model to edit. Start from a preset, then tweak the text.</p>
+    <p style="color:#666; font-size:0.9rem;">Describe the edits you want. Be specific about scope, tone, and constraints. Preserve meaning unless you request a rewrite. Start from a preset if helpful.</p>
+    <p style="color:#666; font-size:0.85rem;">Tip: attach supporting files and enable Web/Python tools in the menu if you want the model to use them.</p>
     <div id="customPresetContainer"></div>
   </div>
   <div class="summary-section">
     <label for="customInstructionInput" style="font-weight:600; display:block; margin-bottom:6px;">User instructions</label>
-    <textarea id="customInstructionInput" style="width:100%; height:150px; font-family:monospace; font-size:0.9rem;"></textarea>
+    <textarea id="customInstructionInput" placeholder="Describe your editing instructions..." style="width:100%; height:150px; font-family:monospace; font-size:0.9rem;"></textarea>
   </div>
   <div class="summary-section" style="display:flex; gap:12px; flex-wrap:wrap;">
     <div>
@@ -1858,6 +1984,30 @@ body {
   </div>
 </div>
 
+<!-- Run History Modal -->
+<div class="modal-overlay" id="runHistoryOverlay"></div>
+<div class="summary-modal" id="runHistoryModal" role="dialog" aria-modal="true" aria-labelledby="runHistoryTitle" tabindex="-1">
+  <button class="summary-close" id="runHistoryClose" aria-label="Close dialog">×</button>
+  <h2 id="runHistoryTitle">Run history</h2>
+  <div class="summary-section">
+    <p style="color:#666; font-size:0.9rem;">Run history can store prompts/responses locally (IndexedDB) so they can be reviewed or downloaded later.</p>
+    <div class="shortcut-hint">Warning: Stored runs live in this browser profile and can be read by anyone with access to it.</div>
+  </div>
+  <div class="summary-section">
+    <label for="runHistoryModeSelect" style="font-weight:600; display:block; margin-bottom:6px;">Storage mode</label>
+    <select id="runHistoryModeSelect" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; font-size:0.9rem;">
+      <option value="temporary">Run history: temporary</option>
+      <option value="persist">Run history: persist (local)</option>
+    </select>
+    <div id="runHistoryModeNote" class="shortcut-hint" style="margin-top:6px;"></div>
+  </div>
+  <div class="popover-actions">
+    <button class="popover-btn" id="runHistoryClearBtn">Clear stored history</button>
+    <button class="popover-btn reject" id="runHistoryCancelBtn">Cancel</button>
+    <button class="popover-btn accept" id="runHistorySaveBtn">Save</button>
+  </div>
+</div>
+
 <!-- Last Run Modal (injected via script) -->
 
 <!-- About Modal -->
@@ -1871,15 +2021,16 @@ body {
   Co-founder, All Day TA</p>
   
   <p>
-    <a href="https://kevinbryanecon.com" target="_blank">kevinbryanecon.com</a> | 
-    <a href="https://alldayta.com" target="_blank">alldayta.com</a><br>
+    <a href="https://kevinbryanecon.com" target="_blank" rel="noopener noreferrer">kevinbryanecon.com</a> | 
+    <a href="https://alldayta.com" target="_blank" rel="noopener noreferrer">alldayta.com</a><br>
     <a href="mailto:kevin.bryan@rotman.utoronto.ca">kevin.bryan@rotman.utoronto.ca</a><br>
   </p>
+  <p><strong>Warning:</strong> This code contains many insecure elements (see below). Do not use it with sensitive data.</p>
 
   <ul>
     <li><strong>Spelling and Grammar:</strong> Context and LaTeX aware spelling and grammar check. You can set your language of choice.</li>
     <li><strong>Style:</strong> Stylistic guidelines following specific rules. Some are preloaded (<i>Literary Nonfiction is my favorite</i>, but you can add your own if you download this package). Be VERY detailed about your style preferences!</li>
-    <li><strong>Custom / User instructions:</strong> Open the custom modal, pick presets (grammar, style, math, consistency, clarity), tweak the instructions, choose scope (selection/full/auto) and aggressiveness, then run a custom check.</li>
+    <li><strong>Custom / User instructions:</strong> Open the custom modal, pick presets (check everything, grammar, math, consistency, solutions, slides, report audit), tweak the instructions, choose scope (selection/full/auto) and aggressiveness, then run a custom check. Supporting files and tools apply here too.</li>
     <li><strong>Simplify:</strong> Select a paragraph or two of text and a 'simplify' button will create three simplifications retaining technical content.</li>
     <li><strong>Proof:</strong> (Beta) Select a theorem and proof, and the 'proof' button will attempt to analyze the logical and mathematical accuracy.</li>
     <li><strong>Custom Ask:</strong> Select text, type your instruction (e.g., "Can I improve this?"), and click Custom Ask. We send only the selection (with nearby context read-only) and return a comment plus suggestions in the summary modal.</li>
@@ -1894,17 +2045,29 @@ body {
   <p><strong>Keyboard scope:</strong> Navigation keys (←/→/Enter/Delete) only hijack input when corrections are showing and focus is not inside another input box; typing in fields like Custom/Import keeps normal cursor movement.</p>
   <p><strong>Token usage:</strong> Open your browser console to see input/output/total tokens after each run.</p>
   Choose your model family and reasoning effort in the menu (GPT-5.2 thinking, GPT-5.2-pro, GPT-4.1-mini, Gemini 3 Pro/Flash, or Gemini 2.5 Flash) to balance quality and cost. (Pricing reminder: add spend note later.)
+  <h3>Insecure elements (known)</h3>
+  <ul>
+    <li><strong>API keys:</strong> stored in memory and optionally in localStorage with reversible obfuscation (not secure).</li>
+    <li><strong>Key scripts:</strong> optional local script loading executes JavaScript files.</li>
+    <li><strong>Local storage:</strong> autosave/session snapshots stored in localStorage/sessionStorage.</li>
+    <li><strong>Run history:</strong> prompts/responses may persist in IndexedDB when enabled.</li>
+    <li><strong>Supporting files:</strong> metadata stored locally; file contents sent as model context.</li>
+  </ul>
 </div>
 
 <!-- File Upload Modal -->
 <div class="modal-overlay" id="fileOverlay"></div>
 <div class="file-modal" id="fileModal" role="dialog" aria-modal="true" aria-labelledby="fileTitle" tabindex="-1">
   <button class="summary-close" id="fileClose" aria-label="Close dialog">×</button>
-  <h2 id="fileTitle">Open File</h2>
+  <h2 id="fileTitle">Upload Document</h2>
   <div class="drop-zone" id="dropZone">
+    <p style="margin-bottom: 12px; font-size: 0.9rem;">Upload a new document for editing. This replaces the current document.</p>
     <p>Drag and drop a .tex or .txt file here</p>
     <p style="margin-bottom: 8px; font-size: 0.9rem;">or</p>
-    <button class="file-btn" id="fileSelectBtn">Choose File</button>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+      <button class="file-btn" id="fileSelectBtn">Choose File</button>
+      <button class="file-btn" id="supportFilesFromFileModalBtn">Upload supporting files</button>
+    </div>
     <input type="file" class="file-input" id="fileInput" accept=".tex,.txt">
     <input type="file" id="sessionFileInput" accept=".json" style="display:none;">
   </div>
@@ -1928,7 +2091,15 @@ body {
   </div>
   <div class="support-files-hint">Attachments are skipped when chunking is active. Increase the chunk size to include them.</div>
   <div class="support-files-hint">Plain text (markdown/latex) is preferred; PDFs are slower and more expensive.</div>
+  <div class="support-files-hint">Supporting files count toward token usage and cost.</div>
   <div class="support-files-list" id="supportFilesList"></div>
+  <div class="support-files-index" id="supportFilesIndex">
+    <div class="support-files-index-header">
+      <div>Recent supporting files (name, size, date/time)</div>
+      <button class="file-btn support-files-clear" id="supportFilesIndexClearBtn">Clear recent list</button>
+    </div>
+    <div class="support-files-index-list" id="supportFilesIndexList"></div>
+  </div>
 </div>
 
 <!-- Supporting Files Confirm Modal -->
@@ -1962,8 +2133,18 @@ body {
     <label class="sr-only" for="geminiApiKeyInput">Gemini API key</label>
     <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key">
   </div>
-  <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+  <div class="api-key-persist">
+    <label style="display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" id="persistKeysToggle">
+      Remember keys on this device (local storage)
+    </label>
+    <div id="persistKeysNote" style="margin-top:6px; color:#92400e;">
+      Warning: Stored keys are only obfuscated. Anyone with access to this browser profile could recover them.
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; justify-content:center; margin-top:8px; flex-wrap:wrap;">
     <button id="apiKeySkip">Skip OpenAI for now</button>
+    <button id="apiKeyClearStored" type="button">Clear stored keys</button>
     <button id="apiKeySubmit">Save keys</button>
   </div>
 </div>

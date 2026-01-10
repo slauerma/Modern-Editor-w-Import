@@ -7,6 +7,8 @@ Port/maintainer: Stephan Lauermann
 
 ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline GPT-assisted editing using the OpenAI GPT family and Gemini. It runs grammar, style, simplification, and proof checks; it can also run Python to check math and search the web when enabled under GPT. You can accept/reject/edit each suggestion, and you can work fully offline by importing precomputed JSON corrections.
 
+Warning: This code contains many insecure elements (see below). Do not use it with sensitive data.
+
 ---
 
 ## Quickstart
@@ -43,7 +45,7 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 ---
 
 ## JSON contracts (for imports or running models elsewhere)
-- Corrections schema (grammar/style/custom): one object with a `corrections` array of `{ original, corrected, explanation, type }`. Types: `grammar`, `style`, or `comment`. Empty = `{"corrections":[]}`. For `type: "comment"`, the editor will never change the text; the item is just a note, so set `corrected` equal to `original`.  
+- Corrections schema (grammar/style/custom): one object with a `corrections` array of `{ original, corrected, explanation, type }`. Types: `grammar`, `style`, or `comment`. Empty = `{"corrections":[]}`. For `type: "comment"`, the editor never changes the text; the item is a note (no diff), so set `corrected` equal to `original`. Comment items are used for note-only guidance (e.g., comment imports and deep-audit non-local issues).  
 - Simplify: `{ same_length, moderate, concise }` strings.  
 - Proof: `{ is_valid, issues[], questions[], suggestions[], overall }`.  
 - Custom Ask: `{ comment, suggestions[] }`.
@@ -73,3 +75,13 @@ ModernEditor is a browser-based editor for LaTeX/Markdown/plain text with inline
 - Gemini structured output rejected: simplify the schema (reduce nesting) and ensure your Gemini key is set; the app uses `responseJsonSchema` with the same schema as OpenAI.
 - Gemini 3 Flash preview: model IDs and access can change; if you see "model not found," verify your key has preview access.
 - See token/cost logs in the menu’s run log or the browser console.
+
+---
+
+## Insecure elements (known)
+- API keys live in memory and can be optionally stored in localStorage with reversible obfuscation (not secure).
+- Optional key “script” loading executes local JS files (use only on trusted local machines).
+- Document text and snapshots are stored in localStorage/sessionStorage for autosave and session export.
+- Run history (if enabled) persists prompts/responses in IndexedDB on this browser profile.
+- Supporting file metadata is stored locally; attachments are sent to model providers as prompt context.
+- No CSP or sandboxing is enforced when running as a plain HTML file.

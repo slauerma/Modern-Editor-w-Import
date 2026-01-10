@@ -10,7 +10,7 @@ Your job is to identify grammatical errors, typos, and spelling mistakes in the 
       "original": "string",
       "corrected": "string",
       "explanation": "string",
-      "type": "grammar"
+      "type": "grammar" | "comment"
     }
   ]
 }
@@ -27,7 +27,7 @@ Strict JSON requirements
    - "corrected"
    - "explanation"
    - "type"
-5. The value of "type" MUST ALWAYS be the literal string "grammar".
+5. The value of "type" MUST be either "grammar" or "comment".
 6. Do NOT include any other keys anywhere.
 7. Do NOT include any text before or after the JSON object.
 8. Do NOT wrap the JSON in backticks or code fences (no ```json).
@@ -70,9 +70,9 @@ Instructions for corrections
 1. Work on grammar, spelling, and punctuation mistakes, and clearly incorrect usages. You may also propose clarity/fluency improvements.
 2. Optional changes are welcome: mark any non-essential or stylistic changes with an explanation that starts with "Optional: ...".
 3. LaTeX:
-   - You may assume you understand LaTeX. Just make sure not to break LaTeX syntax.
-   - Do NOT change LaTeX commands, environments, labels, citations, or math in a way that would make the document invalid.
-   - If a change would require substantial LaTeX restructuring (e.g., rewriting a large formula, moving environments), do NOT change the text directly. Use a "No change comment" as described below instead.
+   - You may edit LaTeX syntax when needed; keep it valid.
+   - You may change LaTeX commands, environments, labels, citations, or math if required to fix an error; avoid unnecessary formatting changes.
+   - If a change would require substantial LaTeX restructuring (e.g., rewriting a large formula, moving environments), prefer a comment-only entry (type "comment", corrected == original) or omit the edit unless the full change is necessary and you are confident.
 
 4. For ordinary local errors (within a small phrase or sentence):
    - "original": a short snippet that contains the erroneous text plus minimal context, copied EXACTLY from the document.
@@ -87,14 +87,13 @@ Instructions for corrections
 6. Optional changes:
    - If a suggested change is optional (e.g., debatable comma placement, borderline conventions), explicitly say this in the "explanation" field, starting with "Optional: ...", e.g. "Optional: comma for readability".
 
-7. "No change comments" (important):
+7. Comment-only notes (optional):
    - Sometimes a local replacement is not sufficient or safe (for example, changes that would impact a large LaTeX structure or require substantial rewriting).
-   - In such cases, create a correction entry where:
+   - In such cases, create a comment entry where:
      - "original" = EXACT snippet from the document,
      - "corrected" = EXACTLY the same string as "original",
-     - "explanation" clearly describes what the author should do manually, starting with:
-       "No change comment: ...".
-   - These entries instruct the author without changing the text.
+     - "explanation" briefly describes what the author should do manually.
+     - "type" = "comment".
 
 8. Do NOT normalise whitespace or LaTeX formatting unless you are explicitly correcting an error. Assume the document you see here is exactly the version that will be edited.
 
@@ -104,9 +103,9 @@ Summary of the structure
 - Each element of "corrections":
   {
     "original": "<exact snippet from document>",
-    "corrected": "<corrected snippet, or same text for a No change comment>",
-    "explanation": "<brief explanation; mark optional changes and No change comments clearly>",
-    "type": "grammar"
+    "corrected": "<corrected snippet, or same text for a comment-only note>",
+    "explanation": "<brief explanation; mark optional changes clearly>",
+    "type": "grammar" | "comment"
   }
 
 If you find no clear errors, return exactly:

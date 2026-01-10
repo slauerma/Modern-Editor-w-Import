@@ -13,9 +13,9 @@ Steps:
 3) For each actionable item in the comments, find the exact span in the document.
 4) Emit a correction entry with:
    - original: exact text from the document (must match)
-   - corrected: the improved text (or keep identical for a "No change comment")
+   - corrected: the improved text (or keep identical for a comment-only note)
    - explanation: short rationale
-   - type: "grammar" (or "comment" if no text change, explanation starts with "No change comment:")
+   - type: "grammar" (or "comment" if no text change; explanation is a brief note)
 5) If no actionable edits exist, return {"corrections": []}.
 6) Escape backslashes (e.g., \\cite) properly for JSON.
 7) Return ONLY the JSON object.
