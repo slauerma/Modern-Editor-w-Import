@@ -10,8 +10,15 @@ const MAX_RUN_LOG = 500;
 const RUN_HISTORY_ENABLED_KEY = 'runHistoryEnabled';
 const RUN_HISTORY_MAX_ENTRIES = 200;
 const RUN_HISTORY_RECENT_LIMIT = 25;
+const RUN_HISTORY_MAX_PROMPT_CHARS = 6000;
+const RUN_HISTORY_MAX_RESPONSE_CHARS = 12000;
+const RUN_HISTORY_MAX_RESPONSE_PARSED_CHARS = 12000;
+const RUN_HISTORY_TRUNCATION_SUFFIX = '... [truncated]';
 const MAX_LAST_RUNS = 25;
 const TOOLS_MODE_KEY = 'toolsMode';
+const FUZZY_MATCH_MAX_DIST = 3;
+const FUZZY_MATCH_WINDOW = 3000;
+const FUZZY_MATCH_MAX_TEXT = 120000;
 const PERSIST_KEYS_ENABLED_KEY = 'persistApiKeysEnabled';
 const PERSIST_KEYS_STORAGE_KEY = 'persistApiKeysEncrypted';
 const PERSIST_KEYS_VERSION = 1;
@@ -21,6 +28,8 @@ let loadingTipTimer = null;
 let loadingTipIndex = 0;
 let lastRuns = [];
 let originalDocumentText = '';
+let preferredToolsMode = null;
+let runHistoryStorageWarning = '';
 
 function addRunLogEntry(entry) {
   if (!entry || typeof entry !== 'object') return;
@@ -57,11 +66,21 @@ function updateRunHistoryNote() {
     return;
   }
   const mode = runHistoryModeSelect ? runHistoryModeSelect.value : (isRunHistoryEnabled() ? 'persist' : 'temporary');
+  let note = '';
   if (mode === 'persist') {
-    runHistoryModeNote.textContent = 'Persists prompts/responses in this browser. Disable to stop saving new runs (stored runs remain).';
+    note = 'Persists prompts/responses in this browser. Disable to stop saving new runs (stored runs remain).';
   } else {
-    runHistoryModeNote.textContent = 'Keeps runs only in memory for this tab. Stored runs are not deleted.';
+    note = 'Keeps runs only in memory for this tab. Stored runs are not deleted.';
   }
+  if (mode === 'persist' && runHistoryStorageWarning) {
+    note = `${note} Warning: ${runHistoryStorageWarning}`;
+  }
+  runHistoryModeNote.textContent = note;
+}
+
+function setRunHistoryStorageWarning(message) {
+  runHistoryStorageWarning = typeof message === 'string' ? message.trim() : '';
+  updateRunHistoryNote();
 }
 
 function openRunHistoryModal() {
@@ -76,12 +95,27 @@ function closeRunHistoryModal() {
   if (runHistoryOverlay) runHistoryOverlay.classList.remove('visible');
 }
 
+function truncateRunHistoryText(value, limit) {
+  if (typeof value !== 'string') return value;
+  if (!Number.isFinite(limit) || limit < 1) return value;
+  if (value.length <= limit) return value;
+  const suffix = RUN_HISTORY_TRUNCATION_SUFFIX;
+  const sliceLimit = Math.max(0, limit - suffix.length);
+  return `${value.slice(0, sliceLimit)}${suffix}`;
+}
+
 function normalizeRunHistoryEntry(run) {
   if (!run || typeof run !== 'object') return null;
   const toolsMode = getToolsMode();
   const toolsFlags = toolsModeToFlags(toolsMode);
+  const prompt = truncateRunHistoryText(run.prompt || '', RUN_HISTORY_MAX_PROMPT_CHARS);
+  const responseRaw = truncateRunHistoryText(run.responseRaw || '', RUN_HISTORY_MAX_RESPONSE_CHARS);
+  let responseParsed = run.responseParsed;
+  if (typeof responseParsed === 'string') {
+    responseParsed = truncateRunHistoryText(responseParsed, RUN_HISTORY_MAX_RESPONSE_PARSED_CHARS);
+  }
   return {
-    prompt: run.prompt || '',
+    prompt,
     model: run.model || '',
     provider: run.provider || '',
     responseType: run.responseType || '',
@@ -89,8 +123,8 @@ function normalizeRunHistoryEntry(run) {
     duration_ms: Number.isFinite(run.duration_ms) ? run.duration_ms : null,
     duration_s: Number.isFinite(run.duration_s) ? run.duration_s : null,
     usage: run.usage || null,
-    responseRaw: run.responseRaw || '',
-    responseParsed: run.responseParsed
+    responseRaw,
+    responseParsed
   };
 }
 
@@ -99,7 +133,17 @@ function persistRunHistoryEntry(run) {
   if (!window.runHistoryStore || typeof window.runHistoryStore.addEntry !== 'function') return;
   const payload = normalizeRunHistoryEntry(run);
   if (!payload) return;
-  window.runHistoryStore.addEntry(payload, { maxEntries: RUN_HISTORY_MAX_ENTRIES });
+  window.runHistoryStore.addEntry(payload, { maxEntries: RUN_HISTORY_MAX_ENTRIES })
+    .then((ok) => {
+      if (!ok) {
+        setRunHistoryStorageWarning('Storage appears full; recent runs were not saved.');
+      } else if (runHistoryStorageWarning) {
+        setRunHistoryStorageWarning('');
+      }
+    })
+    .catch(() => {
+      setRunHistoryStorageWarning('Storage appears full; recent runs were not saved.');
+    });
 }
 
 function pushLastRun(entry) {
@@ -347,6 +391,9 @@ const SUPPORTING_TOKEN_ESTIMATE_PER_CHAR = 0.25;
 const SUPPORTING_SINGLE_CHUNK_TOKEN_WARNING = 100000;
 const SUPPORT_FILES_INDEX_KEY = 'supportFilesIndex_v1';
 const SUPPORT_FILES_INDEX_MAX = 20;
+const SUPPORT_FILES_ID_INDEX_KEY = 'supportFileIds_v1';
+const SUPPORT_FILES_ID_INDEX_MAX = 50;
+const SUPPORT_FILES_ID_STORAGE_KEY = 'supportFileIdsEnabled';
 const UPLOAD_TIMEOUT_BASE_MS = 30000;
 const UPLOAD_TIMEOUT_PER_MB_MS = 2000;
 const UPLOAD_TIMEOUT_MAX_MS = 180000;
@@ -637,6 +684,11 @@ const supportFilesList = document.getElementById('supportFilesList');
 const supportFilesIndex = document.getElementById('supportFilesIndex');
 const supportFilesIndexList = document.getElementById('supportFilesIndexList');
 const supportFilesIndexClearBtn = document.getElementById('supportFilesIndexClearBtn');
+const supportFilesIdToggle = document.getElementById('supportFilesIdToggle');
+const supportFilesIdToggleNote = document.getElementById('supportFilesIdToggleNote');
+const supportFilesIdIndex = document.getElementById('supportFilesIdIndex');
+const supportFilesIdList = document.getElementById('supportFilesIdList');
+const supportFilesIdClearBtn = document.getElementById('supportFilesIdClearBtn');
 const supportingConfirmOverlay = document.getElementById('supportingConfirmOverlay');
 const supportingConfirmModal = document.getElementById('supportingConfirmModal');
 const supportingConfirmBody = document.getElementById('supportingConfirmBody');
@@ -673,6 +725,7 @@ const cancelRequestBtn = document.getElementById('cancelRequestBtn');
 const copyBtn = document.getElementById('copyBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const uploadBtn = document.getElementById('uploadBtn');
+const modelSummaryBtn = document.getElementById('modelSummaryBtn');
 const styleSelect = document.getElementById('styleSelect');
 const styleRulesHint = document.getElementById('styleRulesHint');
 const modelFamilySelect = document.getElementById('modelFamilySelect');
@@ -819,8 +872,8 @@ function trySaveDocAutosave() {
 }
 
 function buildSessionSnapshot() {
-  const toolsMode = getToolsMode();
-  const toolsFlags = getToolsFlags();
+  const toolsMode = getPreferredToolsMode();
+  const toolsFlags = toolsModeToFlags(toolsMode);
   return {
     version: SESSION_VERSION,
     timestamp: Date.now(),
@@ -948,6 +1001,57 @@ function updateAutoChunkUI() {
   if (autoChunkInfoBtn) {
     autoChunkInfoBtn.setAttribute('aria-expanded', autoChunkInfoOpen ? 'true' : 'false');
   }
+}
+
+function getShortReasoningLabel(label) {
+  if (!label) return '';
+  const cleaned = label.replace(/\([^)]*\)/g, '').trim();
+  if (!cleaned) return '';
+  const lower = cleaned.toLowerCase();
+  if (lower.includes('extra high')) return 'XHigh';
+  if (lower.includes('highest')) return 'Highest';
+  if (lower.includes('high')) return 'High';
+  if (lower.includes('medium') || lower.includes('balanced')) return 'Medium';
+  if (lower.includes('low')) return 'Low';
+  if (lower.includes('none')) return 'None';
+  if (lower.includes('auto')) return 'Auto';
+  if (lower.includes('default')) return 'Default';
+  return cleaned.split(/\s+/)[0] || cleaned;
+}
+
+function getModelSummaryLabel() {
+  const familyKey = resolveFamilySelection();
+  const family = MODEL_FAMILIES[familyKey] || {};
+  const rawLabel = family.label || family.model || 'Model';
+  let modelLabel = rawLabel.replace(/\([^)]*\)/g, '').replace(/Expensive!?/gi, '').trim();
+  modelLabel = modelLabel.replace(/-/g, ' ');
+  modelLabel = modelLabel.replace(/\s+/g, ' ').trim();
+  modelLabel = modelLabel.replace(/\bpro\b/gi, 'Pro').replace(/\bmini\b/gi, 'Mini');
+
+  let reasoningLabel = '';
+  if (reasoningSelect && reasoningSelect.options && reasoningSelect.selectedIndex >= 0) {
+    reasoningLabel = reasoningSelect.options[reasoningSelect.selectedIndex]?.text || '';
+  } else if (family.reasoning?.defaultOption && family.reasoning.options?.[family.reasoning.defaultOption]) {
+    reasoningLabel = family.reasoning.options[family.reasoning.defaultOption].label || '';
+  }
+  const shortReasoning = getShortReasoningLabel(reasoningLabel);
+  return shortReasoning ? `${modelLabel} ${shortReasoning}` : modelLabel;
+}
+
+function updateModelSummaryButton() {
+  if (!modelSummaryBtn) return;
+  const familyKey = resolveFamilySelection();
+  const family = MODEL_FAMILIES[familyKey] || {};
+  const modelLabel = family.label || family.model || 'Model';
+  let reasoningLabel = '';
+  if (reasoningSelect && reasoningSelect.options && reasoningSelect.selectedIndex >= 0) {
+    reasoningLabel = reasoningSelect.options[reasoningSelect.selectedIndex]?.text || '';
+  }
+  const label = getModelSummaryLabel();
+  modelSummaryBtn.textContent = label || 'Model';
+  const titleParts = [modelLabel];
+  if (reasoningLabel) titleParts.push(reasoningLabel);
+  modelSummaryBtn.title = titleParts.join(' • ');
 }
 
 function getSelectedProvider() {
@@ -1140,6 +1244,7 @@ function applySessionSnapshot(snapshot, options = {}) {
       setToolsMode(mode);
     }
     refreshToolAvailability();
+    updateModelSummaryButton();
   }
 
   refreshToolAvailability();
@@ -1173,6 +1278,18 @@ function applySessionSnapshot(snapshot, options = {}) {
       size: file.size,
       kind: file.kind
     })));
+    const idEntries = supportingFiles
+      .filter((file) => file && file.kind === 'pdf' && file.openaiFileId)
+      .map((file) => ({
+        provider: 'openai',
+        fileId: file.openaiFileId,
+        name: file.name,
+        size: file.size,
+        kind: file.kind
+      }));
+    if (idEntries.length) {
+      updateSupportingFileIdIndex(idEntries);
+    }
   }
   renderSupportingFilesList();
 
@@ -1509,6 +1626,7 @@ const popoverRejectBtn = document.getElementById('popoverRejectBtn');
 
 // Hamburger menu events
 hamburgerBtn.addEventListener('click', openHamburgerMenu);
+if (modelSummaryBtn) modelSummaryBtn.addEventListener('click', openHamburgerMenu);
 menuClose.addEventListener('click', closeHamburgerMenu);
 menuOverlay.addEventListener('click', closeHamburgerMenu);
 
@@ -1897,6 +2015,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateApiStatusUI();
   updateApiKeyInfoUI();
   updateRunHistoryUI();
+  updateModelSummaryButton();
   if (isRunHistoryEnabled()) {
     await loadRunHistoryRecent();
   }
@@ -1912,12 +2031,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     populateReasoningOptions(modelFamilySelect.value);
     refreshToolAvailability();
     updateApiStatusUI();
+    updateModelSummaryButton();
   });
   if (reasoningSelect) {
     reasoningSelect.addEventListener('change', () => {
       const family = resolveFamilySelection();
       saveReasoningPref(family, reasoningSelect.value);
       updateApiStatusUI();
+      updateModelSummaryButton();
     });
   }
   languageSelect.addEventListener('change', () =>
@@ -2011,6 +2132,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const ok = confirm('Clear stored run history from this browser?');
       if (!ok) return;
       await window.runHistoryStore.clear();
+      if (runHistoryStorageWarning) {
+        setRunHistoryStorageWarning('');
+      }
       updateRunHistoryUI();
     });
   }
@@ -2294,6 +2418,19 @@ if (supportFilesInput) supportFilesInput.addEventListener('change', handleSuppor
 if (supportFilesPrepareBtn) supportFilesPrepareBtn.addEventListener('click', prepareSupportingFiles);
 if (supportFilesCancelBtn) supportFilesCancelBtn.addEventListener('click', cancelSupportingPrepare);
 if (supportFilesClearBtn) supportFilesClearBtn.addEventListener('click', clearSupportingFiles);
+if (supportFilesIdToggle) {
+  supportFilesIdToggle.addEventListener('change', () => {
+    setSupportingFileIdStorageEnabled(!!supportFilesIdToggle.checked);
+  });
+}
+if (supportFilesIdClearBtn) {
+  supportFilesIdClearBtn.addEventListener('click', () => {
+    const ok = confirm('Clear stored OpenAI file IDs from this browser?');
+    if (!ok) return;
+    safeRemoveStorage(SUPPORT_FILES_ID_INDEX_KEY);
+    renderSupportingFileIdIndex();
+  });
+}
 if (supportFilesIndexClearBtn) {
   supportFilesIndexClearBtn.addEventListener('click', () => {
     const ok = confirm('Clear the recent supporting files list?');
@@ -2308,6 +2445,18 @@ if (supportFilesList) {
     if (!btn) return;
     const id = btn.getAttribute('data-id');
     if (id) removeSupportingFile(id);
+  });
+}
+if (supportFilesIdList) {
+  supportFilesIdList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.support-files-attach');
+    if (!btn) return;
+    const fileId = btn.getAttribute('data-file-id') || '';
+    const provider = btn.getAttribute('data-provider') || 'openai';
+    const name = btn.getAttribute('data-name') || '';
+    const size = Number(btn.getAttribute('data-size')) || 0;
+    const kind = btn.getAttribute('data-kind') || 'pdf';
+    attachSupportingFileId({ provider, fileId, name, size, kind });
   });
 }
 if (supportingConfirmAccept) supportingConfirmAccept.addEventListener('click', () => closeSupportingConfirm('continue'));
@@ -2969,6 +3118,16 @@ function getToolSupportForFamily(familyKey) {
   };
 }
 
+function isParallelSupportedForFamily(familyKey) {
+  const familyConfig = MODEL_FAMILIES[familyKey] || {};
+  const provider = familyConfig.provider || 'openai';
+  return provider === 'openai' && familyKey !== 'gpt5_pro';
+}
+
+function getEffectiveParallelCalls(familyKey) {
+  return isParallelSupportedForFamily(familyKey) ? maxParallelCalls : 1;
+}
+
 function normalizeToolsMode(mode) {
   const value = (mode || '').toLowerCase();
   if (value === 'web' || value === 'python' || value === 'both' || value === 'none') {
@@ -3003,18 +3162,16 @@ function resolveStoredToolsMode() {
   return 'none';
 }
 
-function getToolsMode() {
-  if (toolsModeSelect) {
-    return normalizeToolsMode(toolsModeSelect.value);
+function getPreferredToolsMode() {
+  if (!preferredToolsMode) {
+    preferredToolsMode = resolveStoredToolsMode();
   }
-  return normalizeToolsMode(safeGetStorage(TOOLS_MODE_KEY));
+  return normalizeToolsMode(preferredToolsMode);
 }
 
-function setToolsMode(mode, options = {}) {
+function setPreferredToolsMode(mode, options = {}) {
   const normalized = normalizeToolsMode(mode);
-  if (toolsModeSelect) {
-    toolsModeSelect.value = normalized;
-  }
+  preferredToolsMode = normalized;
   if (options.persist !== false) {
     safeSetStorage(TOOLS_MODE_KEY, normalized);
   }
@@ -3023,6 +3180,26 @@ function setToolsMode(mode, options = {}) {
     safeSetStorage('toolsWebSearch', flags.web ? '1' : '0');
     safeSetStorage('toolsCodeInterpreter', flags.python ? '1' : '0');
   }
+}
+
+function applyToolsModeSelection(mode) {
+  if (toolsModeSelect) {
+    toolsModeSelect.value = normalizeToolsMode(mode);
+  }
+}
+
+function getToolsMode(toolSupport) {
+  const support = toolSupport || getToolSupportForFamily(resolveFamilySelection());
+  return constrainToolsMode(getPreferredToolsMode(), support);
+}
+
+function setToolsMode(mode, options = {}) {
+  const normalized = normalizeToolsMode(mode);
+  setPreferredToolsMode(normalized, options);
+  const support = options.toolSupport || getToolSupportForFamily(resolveFamilySelection());
+  const effective = constrainToolsMode(normalized, support);
+  applyToolsModeSelection(effective);
+  return effective;
 }
 
 function constrainToolsMode(mode, toolSupport) {
@@ -3052,6 +3229,21 @@ function updateToolsModeOptions(toolSupport) {
   });
 }
 
+function refreshParallelCallsUI() {
+  if (!parallelismInput) return;
+  const familyKey = resolveFamilySelection();
+  const supported = isParallelSupportedForFamily(familyKey);
+  const noneOption = parallelismInput.querySelector('option[value="1"]');
+  if (noneOption) {
+    const baseLabel = noneOption.dataset.label || 'Parallel calls: None';
+    noneOption.textContent = supported
+      ? baseLabel
+      : 'Parallel calls: None (Change model to enable)';
+  }
+  parallelismInput.disabled = !supported;
+  parallelismInput.value = String(supported ? maxParallelCalls : 1);
+}
+
 function getToolsFlags() {
   return toolsModeToFlags(getToolsMode());
 }
@@ -3070,12 +3262,20 @@ function refreshToolAvailability() {
         : baseLabel;
     }
     toolsModeSelect.disabled = !toolSupport.web_search && !toolSupport.code_interpreter;
-    const nextMode = constrainToolsMode(getToolsMode(), toolSupport);
-    setToolsMode(nextMode);
+    const preferredMode = getPreferredToolsMode();
+    const nextMode = constrainToolsMode(preferredMode, toolSupport);
+    applyToolsModeSelection(nextMode);
   }
 
   if (toolSupportHint) {
-    if (family === 'gpt5_pro') {
+    const toolsAvailable = toolSupport.web_search || toolSupport.code_interpreter;
+    if (!toolsAvailable) {
+      const preferenceNote = 'Your preferred tools stay saved for when you switch back.';
+      toolSupportHint.textContent = family === 'gpt5_pro'
+        ? `GPT-5.2 Pro runs in single-step mode without tools to keep structured output via function calls. ${preferenceNote}`
+        : `Tools are disabled for this model. ${preferenceNote}`;
+      toolSupportHint.style.display = 'block';
+    } else if (family === 'gpt5_pro') {
       toolSupportHint.textContent = 'GPT-5.2 Pro runs in single-step mode without tools to keep structured output via function calls.';
       toolSupportHint.style.display = 'block';
     } else {
@@ -3083,6 +3283,8 @@ function refreshToolAvailability() {
       toolSupportHint.style.display = 'none';
     }
   }
+
+  refreshParallelCallsUI();
 }
 
 function getModelForType(type) {
@@ -3173,7 +3375,7 @@ function getCurrentSettingsSummaryWithOptions(modelConfig, options = {}) {
   const chunkCount = Number.isFinite(options.chunkCount) ? options.chunkCount : null;
   const parallelCalls = Number.isFinite(options.parallelism)
     ? options.parallelism
-    : maxParallelCalls;
+    : getEffectiveParallelCalls(familyKey);
   const parts = [];
   if (modelLabel) parts.push(reasoningLabel ? `${modelLabel} (${reasoningLabel})` : modelLabel);
   if (langText) parts.push(`Lang: ${langText}`);
@@ -5561,6 +5763,11 @@ function normalizeCorrectionFields(corr) {
 // Map an array of corrections onto positions within the given text
 function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, options = {}) {
   const allowFuzzy = options.allowFuzzy !== false;
+  const maxDist = Number.isFinite(options.maxDist) ? options.maxDist : FUZZY_MATCH_MAX_DIST;
+  const searchWindow = Number.isFinite(options.searchWindow) ? options.searchWindow : FUZZY_MATCH_WINDOW;
+  const maxFuzzyTextLength = Number.isFinite(options.maxFuzzyTextLength)
+    ? options.maxFuzzyTextLength
+    : FUZZY_MATCH_MAX_TEXT;
   let searchFromIndex = 0;
   const mapped = [];
   const unmatched = [];
@@ -5572,18 +5779,25 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
     }
 
     let foundAtIndex = text.indexOf(safe.original, searchFromIndex);
+    let usedFuzzy = false;
     if (foundAtIndex === -1 && allowFuzzy) {
       foundAtIndex = text.indexOf(safe.original);
+    }
+    if (foundAtIndex === -1 && allowFuzzy) {
+      foundAtIndex = findApproxMatch(text, safe.original, searchFromIndex, maxDist, searchWindow);
+      usedFuzzy = foundAtIndex !== -1;
+      if (foundAtIndex === -1 && text.length <= maxFuzzyTextLength) {
+        foundAtIndex = findApproxMatchWhole(text, safe.original, maxDist);
+        usedFuzzy = foundAtIndex !== -1;
+      }
     }
 
     if (foundAtIndex !== -1) {
       const snippet = text.substring(foundAtIndex, foundAtIndex + safe.original.length);
-      if (snippet !== safe.original) {
-        unmatched.push(safe);
-        continue;
-      }
+      const mappedOriginal = usedFuzzy ? snippet : safe.original;
       mapped.push({
         ...safe,
+        original: mappedOriginal,
         position: {
           start: baseOffset + foundAtIndex,
           end: baseOffset + foundAtIndex + safe.original.length
@@ -5610,20 +5824,28 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
 function mapCorrectionsStably(correctionsArray, text, baseOffset = 0, options = {}) {
   const mapped = [];
   const unmatched = [];
-
-  const tryMatch = (corr) => {
-    const safe = normalizeCorrectionFields(corr);
-    if (!safe || !safe.original.length) return -1;
-    return text.indexOf(safe.original);
-  };
+  const allowFuzzy = options.allowFuzzy !== false;
+  const maxDist = Number.isFinite(options.maxDist) ? options.maxDist : FUZZY_MATCH_MAX_DIST;
+  const maxFuzzyTextLength = Number.isFinite(options.maxFuzzyTextLength)
+    ? options.maxFuzzyTextLength
+    : FUZZY_MATCH_MAX_TEXT;
+  const allowFuzzyWhole = allowFuzzy && text.length <= maxFuzzyTextLength;
 
   correctionsArray.forEach((corr) => {
     const safe = normalizeCorrectionFields(corr);
     if (!safe) return;
-    const pos = tryMatch(safe);
+    let pos = text.indexOf(safe.original);
+    let usedFuzzy = false;
+    if (pos === -1 && allowFuzzyWhole) {
+      pos = findApproxMatchWhole(text, safe.original, maxDist);
+      usedFuzzy = pos !== -1;
+    }
     if (pos !== -1) {
+      const snippet = text.substring(pos, pos + safe.original.length);
+      const mappedOriginal = usedFuzzy ? snippet : safe.original;
       mapped.push({
         ...safe,
+        original: mappedOriginal,
         position: {
           start: baseOffset + pos,
           end: baseOffset + pos + safe.original.length
@@ -5985,7 +6207,7 @@ function boundedLevenshtein(a, b, maxDist) {
 }
 
 // Find approximate match of needle in haystack near fromIndex
-function findApproxMatch(haystack, needle, fromIndex = 0, maxDist = 2, searchWindow = 2000) {
+function findApproxMatch(haystack, needle, fromIndex = 0, maxDist = FUZZY_MATCH_MAX_DIST, searchWindow = FUZZY_MATCH_WINDOW) {
   const exact = haystack.indexOf(needle, fromIndex);
   if (exact !== -1) return exact;
 
@@ -6009,7 +6231,7 @@ function findApproxMatch(haystack, needle, fromIndex = 0, maxDist = 2, searchWin
   return bestDist <= maxDist ? bestPos : -1;
 }
 
-function findApproxMatchWhole(haystack, needle, maxDist = 2) {
+function findApproxMatchWhole(haystack, needle, maxDist = FUZZY_MATCH_MAX_DIST) {
   const needleLen = needle.length;
   if (!needleLen) return -1;
   const end = haystack.length - needleLen;
@@ -6895,6 +7117,7 @@ function showSupportingFilesModal() {
   if (!supportFilesModal || !supportFilesOverlay) return;
   supportFilesModal.classList.add('visible');
   supportFilesOverlay.classList.add('visible');
+  updateSupportingFileIdUI();
   renderSupportingFilesList();
 }
 
@@ -7056,6 +7279,63 @@ function updateSupportingFilesIndex(entries) {
   renderSupportingFilesIndex();
 }
 
+function isSupportingFileIdStorageEnabled() {
+  return safeGetStorage(SUPPORT_FILES_ID_STORAGE_KEY) === '1';
+}
+
+function setSupportingFileIdStorageEnabled(enabled) {
+  safeSetStorage(SUPPORT_FILES_ID_STORAGE_KEY, enabled ? '1' : '0');
+  updateSupportingFileIdUI();
+}
+
+function loadSupportingFileIdIndex() {
+  const raw = safeGetStorage(SUPPORT_FILES_ID_INDEX_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveSupportingFileIdIndex(entries) {
+  if (!Array.isArray(entries)) return;
+  safeSetStorage(SUPPORT_FILES_ID_INDEX_KEY, JSON.stringify(entries));
+}
+
+function updateSupportingFileIdIndex(entries) {
+  if (!isSupportingFileIdStorageEnabled()) return;
+  if (!Array.isArray(entries) || !entries.length) return;
+  const existing = loadSupportingFileIdIndex();
+  const map = new Map();
+  existing.forEach((entry) => {
+    if (!entry || !entry.fileId) return;
+    const provider = entry.provider || 'openai';
+    const key = `${provider}|${entry.fileId}`;
+    map.set(key, entry);
+  });
+  const now = Date.now();
+  entries.forEach((entry) => {
+    if (!entry || !entry.fileId) return;
+    const provider = entry.provider || 'openai';
+    const key = `${provider}|${entry.fileId}`;
+    map.set(key, {
+      provider,
+      fileId: entry.fileId,
+      name: entry.name || '',
+      size: entry.size || 0,
+      kind: entry.kind || '',
+      lastUsed: now
+    });
+  });
+  const list = Array.from(map.values())
+    .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))
+    .slice(0, SUPPORT_FILES_ID_INDEX_MAX);
+  saveSupportingFileIdIndex(list);
+  renderSupportingFileIdIndex();
+}
+
 function renderSupportingFilesIndex() {
   if (!supportFilesIndex || !supportFilesIndexList) return;
   const items = loadSupportingFilesIndex();
@@ -7072,6 +7352,114 @@ function renderSupportingFilesIndex() {
     const timeSuffix = timeLabel ? ` • ${timeLabel}` : '';
     return `<div class="support-files-index-item">${escapeHtml(entry.name)}${sizeLabel}${timeSuffix}</div>`;
   }).join('');
+}
+
+function renderSupportingFileIdIndex() {
+  if (!supportFilesIdIndex || !supportFilesIdList) return;
+  const enabled = isSupportingFileIdStorageEnabled();
+  const items = enabled ? loadSupportingFileIdIndex() : [];
+
+  if (supportFilesIdClearBtn) {
+    supportFilesIdClearBtn.disabled = !enabled || !items.length;
+  }
+  if (supportFilesIdToggleNote) {
+    supportFilesIdToggleNote.textContent = enabled
+      ? 'Stored IDs are local only. Disable to stop storing new IDs (existing IDs remain until cleared).'
+      : 'Enable to store OpenAI PDF file IDs locally for reuse.';
+  }
+  if (!enabled) {
+    supportFilesIdList.innerHTML = '<div class="support-files-status">Storage is off.</div>';
+    return;
+  }
+  if (!items.length) {
+    supportFilesIdList.innerHTML = '<div class="support-files-status">No stored file IDs.</div>';
+    return;
+  }
+
+  supportFilesIdList.replaceChildren();
+  items.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'support-files-row';
+
+    const meta = document.createElement('div');
+    meta.className = 'support-files-meta';
+
+    const name = document.createElement('div');
+    name.className = 'support-files-name';
+    name.textContent = entry.name || entry.fileId || 'OpenAI file';
+
+    const status = document.createElement('div');
+    status.className = 'support-files-status';
+    const sizeLabel = entry.size ? ` • ${formatBytes(entry.size)}` : '';
+    const timeLabel = formatShortDateTime(entry.lastUsed);
+    const timeSuffix = timeLabel ? ` • ${timeLabel}` : '';
+    const providerLabel = entry.provider ? ` (${entry.provider})` : '';
+    status.textContent = `${entry.fileId || 'file id'}${providerLabel}${sizeLabel}${timeSuffix}`;
+
+    meta.append(name, status);
+
+    const attachBtn = document.createElement('button');
+    attachBtn.className = 'support-files-attach';
+    attachBtn.dataset.provider = entry.provider || 'openai';
+    attachBtn.dataset.fileId = entry.fileId || '';
+    attachBtn.dataset.name = entry.name || '';
+    attachBtn.dataset.size = entry.size || '';
+    attachBtn.dataset.kind = entry.kind || '';
+    attachBtn.textContent = 'Attach';
+
+    row.append(meta, attachBtn);
+    supportFilesIdList.appendChild(row);
+  });
+}
+
+function updateSupportingFileIdUI() {
+  if (supportFilesIdToggle) {
+    supportFilesIdToggle.checked = isSupportingFileIdStorageEnabled();
+  }
+  renderSupportingFileIdIndex();
+}
+
+function attachSupportingFileId(entry) {
+  if (!entry || !entry.fileId) return;
+  const provider = entry.provider || 'openai';
+  if (provider !== 'openai') {
+    showSupportingToast('Only OpenAI file IDs are supported.');
+    return;
+  }
+  if (supportingFiles.length >= SUPPORTING_MAX_FILES) {
+    alert(`Supporting files limit reached (${SUPPORTING_MAX_FILES}).`);
+    return;
+  }
+  const exists = supportingFiles.some((file) => file && file.openaiFileId === entry.fileId);
+  if (exists) {
+    showSupportingToast('That file ID is already attached.');
+    return;
+  }
+  const name = entry.name || `OpenAI file ${entry.fileId}`;
+  const size = Number(entry.size) || 0;
+  supportingFiles = supportingFiles.concat({
+    localId: makeSupportingLocalId(),
+    file: null,
+    name,
+    size,
+    kind: 'pdf',
+    status: 'ready',
+    openaiFileId: entry.fileId,
+    text: '',
+    dataUrl: '',
+    note: 'stored id'
+  });
+  updateSupportingFilesIndex([{ name, size, kind: 'pdf' }]);
+  updateSupportingFileIdIndex([{
+    provider: 'openai',
+    fileId: entry.fileId,
+    name,
+    size,
+    kind: 'pdf'
+  }]);
+  renderSupportingFilesList();
+  scheduleSessionSave();
+  showSupportingToast('Attached stored OpenAI file ID.');
 }
 
 function renderSupportingFilesList() {
@@ -7115,6 +7503,7 @@ function renderSupportingFilesList() {
     supportFilesList.appendChild(row);
   });
   renderSupportingFilesIndex();
+  renderSupportingFileIdIndex();
 }
 
 function addSupportingFiles(files) {
@@ -7302,6 +7691,13 @@ async function prepareSupportingFiles() {
 
       if (file.kind === 'pdf') {
         if (file.openaiFileId) {
+          updateSupportingFileIdIndex([{
+            provider: 'openai',
+            fileId: file.openaiFileId,
+            name: file.name,
+            size: file.size,
+            kind: file.kind
+          }]);
           updateSupportingFile(file.localId, { status: 'ready' });
           continue;
         }
@@ -7309,6 +7705,13 @@ async function prepareSupportingFiles() {
         try {
           const id = await openaiUploadFile(file.file, 'user_data', { signal });
           updateSupportingFile(file.localId, { openaiFileId: id, status: 'ready' });
+          updateSupportingFileIdIndex([{
+            provider: 'openai',
+            fileId: id,
+            name: file.name,
+            size: file.size,
+            kind: file.kind
+          }]);
         } catch (err) {
           if (signal.aborted || err.message === 'Upload cancelled.') {
             updateSupportingFile(file.localId, { status: 'cancelled', note: 'cancelled' });
