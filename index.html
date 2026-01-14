@@ -1153,6 +1153,7 @@ body {
   transform: translate(-50%, -50%);
   width: 1200px;
   max-width: 90vw;
+  max-height: 85vh;
   background: var(--bg-color);
   border: 1px solid #ccc;
   border-radius: 8px;
@@ -1160,16 +1161,20 @@ body {
   padding: 32px;
   font-family: var(--font-sans);
   z-index: 100;
+  overflow: hidden;
+  box-sizing: border-box;
   display: none;
 }
 
 .about-modal.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .about-modal h2 {
   font-size: 1.4rem;
-  margin-bottom: 20px;
+  margin: 0;
   font-weight: 500;
 }
 
@@ -1179,6 +1184,18 @@ body {
   margin-bottom: 10px;
   font-weight: 600;
   color: #444;
+}
+
+.about-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+}
+
+.about-lede {
+  margin-top: 0;
 }
 
 .about-modal p {
@@ -1191,6 +1208,18 @@ body {
   margin-left: 20px;
   color: #666;
   line-height: 1.8;
+}
+
+.about-modal ol {
+  margin-left: 20px;
+  color: #666;
+  line-height: 1.8;
+}
+
+.about-credits {
+  font-size: 0.9rem;
+  color: #555;
+  margin-top: 16px;
 }
 
 .about-modal a {
@@ -1688,6 +1717,21 @@ body {
       </select>
     </div>
     <div class="menu-select-group">
+      <label for="requestTimeoutSelect" class="sr-only">Request timeout:</label>
+      <select id="requestTimeoutSelect">
+        <option value="0" data-label="Request timeout: Off">Request timeout: Off</option>
+        <option value="60000">Request timeout: 1 min</option>
+        <option value="120000">Request timeout: 2 min</option>
+        <option value="300000">Request timeout: 5 min</option>
+        <option value="600000">Request timeout: 10 min</option>
+        <option value="1200000">Request timeout: 20 min</option>
+        <option value="1800000">Request timeout: 30 min</option>
+      </select>
+      <div id="requestTimeoutHint" class="shortcut-hint" style="margin-top:6px;">
+        Off disables the timeout; long runs may need more time.
+      </div>
+    </div>
+    <div class="menu-select-group">
       <label for="toolsModeSelect" class="sr-only">Tools:</label>
       <select id="toolsModeSelect">
         <option value="none" data-label="Tools: none">Tools: none</option>
@@ -2055,45 +2099,49 @@ body {
 <div class="modal-overlay" id="aboutOverlay"></div>
 <div class="about-modal" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
   <button class="summary-close" id="aboutClose" aria-label="Close dialog">×</button>
-  <h2 id="aboutTitle" class="sr-only">About</h2>
-  <strong>"Super Spell/Style/Grammar Check"</strong> (June 2025, updated July 2025; revised by Stephan Lauermann, November 2025)
-  <p>Created by <strong>Kevin Bryan</strong><br>
-  Associate Professor of Strategic Management, University of Toronto<br>
-  Co-founder, All Day TA</p>
-  
-  <p>
-    <a href="https://kevinbryanecon.com" target="_blank" rel="noopener noreferrer">kevinbryanecon.com</a> | 
-    <a href="https://alldayta.com" target="_blank" rel="noopener noreferrer">alldayta.com</a><br>
-    <a href="mailto:kevin.bryan@rotman.utoronto.ca">kevin.bryan@rotman.utoronto.ca</a><br>
-  </p>
-  <p><strong>Warning:</strong> This code contains many insecure elements (see below). Do not use it with sensitive data.</p>
+  <h2 id="aboutTitle">Help</h2>
+  <div class="about-body">
+    <p class="about-lede"><strong>Super Spell/Style/Grammar Check</strong> is a local editor that sends your text to a selected AI model for feedback and suggested edits.</p>
 
-  <ul>
-    <li><strong>Spelling and Grammar:</strong> Context and LaTeX aware spelling and grammar check. You can set your language of choice.</li>
-    <li><strong>Style:</strong> Stylistic guidelines following specific rules. Some are preloaded (<i>Literary Nonfiction is my favorite</i>, but you can add your own if you download this package). Be VERY detailed about your style preferences!</li>
-    <li><strong>Custom / User instructions:</strong> Open the custom modal, pick presets (check everything, grammar, math, consistency, solutions, slides, report audit), tweak the instructions, choose scope (selection/full/auto) and aggressiveness, then run a custom check. Supporting files and tools apply here too.</li>
-    <li><strong>Simplify:</strong> Select a paragraph or two of text and a 'simplify' button will create three simplifications retaining technical content.</li>
-    <li><strong>Proof:</strong> (Beta) Select a theorem and proof, and the 'proof' button will attempt to analyze the logical and mathematical accuracy.</li>
-    <li><strong>Custom Ask:</strong> Select text, type your instruction (e.g., "Can I improve this?"), and click Custom Ask. We send only the selection (with nearby context read-only) and return a comment plus suggestions in the summary modal.</li>
-  </ul>
-  <h3>Keyboard Shortcuts</h3>
-  <ul>
-    <li><strong>←/→:</strong> Navigate between corrections</li>
-    <li><strong>Enter:</strong> Accept correction (you can also edit the green text before accepting, and undo if needed)</li>
-    <li><strong>Backspace/Delete:</strong> Reject correction</li>
-  </ul>
-  <p><strong>Selections & LaTeX:</strong> If you select text, only that span is analyzed (we send a ~2000 character context window read-only). Full-document runs include the LaTeX preamble so the model sees package/context.</p>
-  <p><strong>Keyboard scope:</strong> Navigation keys (←/→/Enter/Delete) only hijack input when corrections are showing and focus is not inside another input box; typing in fields like Custom/Import keeps normal cursor movement.</p>
-  <p><strong>Token usage:</strong> Open your browser console to see input/output/total tokens after each run.</p>
-  Choose your model family and reasoning effort in the menu (GPT-5.2 thinking, GPT-5.2-pro, GPT-4.1-mini, Gemini 3 Pro/Flash, or Gemini 2.5 Flash) to balance quality and cost. (Pricing reminder: add spend note later.)
-  <h3>Insecure elements (known)</h3>
-  <ul>
-    <li><strong>API keys:</strong> stored in memory and optionally in localStorage with reversible obfuscation (not secure).</li>
-    <li><strong>Key scripts:</strong> optional local script loading executes JavaScript files.</li>
-    <li><strong>Local storage:</strong> autosave/session snapshots stored in localStorage/sessionStorage.</li>
-    <li><strong>Run history:</strong> prompts/responses may persist in IndexedDB when enabled.</li>
-    <li><strong>Supporting files:</strong> metadata stored locally; file contents sent as model context.</li>
-  </ul>
+    <h3>Quick start</h3>
+    <ol>
+      <li>Paste or upload a document, or select a passage to focus.</li>
+      <li>Choose a model and reasoning effort in the menu, then run Grammar, Style, Everything, or Custom.</li>
+      <li>Review suggestions: use left/right arrows to move, Enter to accept, Backspace/Delete to reject.</li>
+    </ol>
+
+    <h3>Tools</h3>
+    <ul>
+      <li><strong>Grammar / Style / Everything:</strong> Rule-based passes over the selection or full document.</li>
+      <li><strong>Custom:</strong> Edit instructions, scope, and aggressiveness; start from a preset if helpful.</li>
+      <li><strong>Simplify:</strong> Creates three simpler rewrites of a selected passage.</li>
+      <li><strong>Proof:</strong> Beta logic check for a selected theorem and proof.</li>
+      <li><strong>Custom Ask:</strong> Ask a question about selected text; returns comments plus suggestions.</li>
+    </ul>
+    <p>Selections include a small read-only context window; full-document runs include the LaTeX preamble.</p>
+
+    <h3>Files and history</h3>
+    <ul>
+      <li><strong>Upload:</strong> Replace the document or add supporting files (PDF, markdown, LaTeX).</li>
+      <li><strong>Supporting files:</strong> Sent with your prompt and count toward cost.</li>
+      <li><strong>Run history:</strong> Optional local storage in this browser profile.</li>
+      <li><strong>Sessions:</strong> Save or load snapshots from the menu.</li>
+    </ul>
+
+    <h3>Privacy and safety</h3>
+    <ul>
+      <li><strong>Data:</strong> Selected or full text is sent to the chosen model provider.</li>
+      <li><strong>Local storage:</strong> Keys, sessions, run history, and file metadata may be saved locally.</li>
+      <li><strong>Sensitive data:</strong> Avoid if you cannot send it to an external provider.</li>
+    </ul>
+
+    <p class="about-credits">Created by <strong>Kevin Bryan</strong> (University of Toronto). Revised by Stephan Lauermann.</p>
+    <p class="about-credits">
+      <a href="https://kevinbryanecon.com" target="_blank" rel="noopener noreferrer">kevinbryanecon.com</a> |
+      <a href="https://alldayta.com" target="_blank" rel="noopener noreferrer">alldayta.com</a> |
+      <a href="mailto:kevin.bryan@rotman.utoronto.ca">kevin.bryan@rotman.utoronto.ca</a>
+    </p>
+  </div>
 </div>
 
 <!-- File Upload Modal -->

@@ -16,6 +16,7 @@ const RUN_HISTORY_MAX_RESPONSE_PARSED_CHARS = 12000;
 const RUN_HISTORY_TRUNCATION_SUFFIX = '... [truncated]';
 const MAX_LAST_RUNS = 25;
 const TOOLS_MODE_KEY = 'toolsMode';
+const REQUEST_TIMEOUT_MS_KEY = 'requestTimeoutMs';
 const FUZZY_MATCH_MAX_DIST = 3;
 const FUZZY_MATCH_WINDOW = 3000;
 const FUZZY_MATCH_MAX_TEXT = 120000;
@@ -163,6 +164,8 @@ async function loadRunHistoryRecent() {
       delete copy.createdAt;
       return copy;
     });
+  } else if (Array.isArray(stored)) {
+    lastRuns = [];
   }
 }
 
@@ -366,6 +369,10 @@ let autoChunkingEnabled = (() => {
   return saved === '1';
 })();
 let autoChunkInfoOpen = false;
+let requestTimeoutMs = (() => {
+  const saved = safeGetStorage(REQUEST_TIMEOUT_MS_KEY);
+  return normalizeRequestTimeoutMs(saved);
+})();
 const keyState = {
   openai: { source: 'none', externalPath: null },
   gemini: { source: 'none', externalPath: null }
@@ -739,6 +746,7 @@ const formatSelect = document.getElementById('formatSelect');
 const correctionControls = document.getElementById('correctionControls');
 const rejectAllBtn = document.getElementById('rejectAllBtn');
 const parallelismInput = document.getElementById('parallelismInput');
+const requestTimeoutSelect = document.getElementById('requestTimeoutSelect');
 const autoChunkHint = document.getElementById('autoChunkHint');
 const autoChunkInfoBtn = document.getElementById('autoChunkInfoBtn');
 const jsonModal = document.getElementById('jsonModal');
@@ -2011,6 +2019,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (parallelismInput) {
     parallelismInput.value = maxParallelCalls;
   }
+  if (requestTimeoutSelect) {
+    const hasOption = requestTimeoutSelect.querySelector(`option[value="${requestTimeoutMs}"]`);
+    if (!hasOption) {
+      requestTimeoutMs = 0;
+      safeSetStorage(REQUEST_TIMEOUT_MS_KEY, '0');
+    }
+    requestTimeoutSelect.value = String(requestTimeoutMs);
+  }
   updateAutoChunkUI();
   updateApiStatusUI();
   updateApiKeyInfoUI();
@@ -2093,6 +2109,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       safeSetStorage('maxParallelCalls', String(maxParallelCalls));
     });
   }
+  if (requestTimeoutSelect) {
+    requestTimeoutSelect.addEventListener('change', () => {
+      requestTimeoutMs = normalizeRequestTimeoutMs(requestTimeoutSelect.value);
+      requestTimeoutSelect.value = String(requestTimeoutMs);
+      safeSetStorage(REQUEST_TIMEOUT_MS_KEY, String(requestTimeoutMs));
+    });
+  }
   if (autoChunkInfoBtn) {
     autoChunkInfoBtn.addEventListener('click', () => {
       autoChunkInfoOpen = !autoChunkInfoOpen;
@@ -2131,7 +2154,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!window.runHistoryStore || typeof window.runHistoryStore.clear !== 'function') return;
       const ok = confirm('Clear stored run history from this browser?');
       if (!ok) return;
-      await window.runHistoryStore.clear();
+      const cleared = await window.runHistoryStore.clear();
+      if (!cleared) {
+        alert('Unable to clear stored run history. Please try again.');
+        return;
+      }
+      lastRuns = [];
       if (runHistoryStorageWarning) {
         setRunHistoryStorageWarning('');
       }
@@ -3546,7 +3574,9 @@ function splitTextIntoChunksWithOffsets(text, maxChunkSize = 30000) {
       }
     }
 
-    if (splitAt === -1 || splitAt <= pos) {
+    if (targetEnd === text.length) {
+      splitAt = targetEnd;
+    } else if (splitAt === -1 || splitAt <= pos) {
       const safeSplit = safeHardSplit();
       splitAt = safeSplit > pos ? safeSplit : targetEnd;
     }
@@ -3900,6 +3930,26 @@ function sleepWithAbort(ms, signal) {
   });
 }
 
+function normalizeRequestTimeoutMs(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  return Math.round(ms);
+}
+
+function formatTimeoutLabel(timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return '0 minutes';
+  const minutes = Math.max(1, Math.round(timeoutMs / 60000));
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
+function buildTimeoutError(timeoutMs) {
+  const error = new Error(
+    `Request timed out after ${formatTimeoutLabel(timeoutMs)}. Increase Request timeout in the menu or turn it off.`
+  );
+  error.name = 'TimeoutError';
+  return error;
+}
+
 async function callModelAPI(prompt, modelConfig, responseType, retryCount = 0, options = {}) {
   const provider = modelConfig?.provider || 'openai';
   if (provider === 'gemini') {
@@ -3999,14 +4049,16 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
 
   let totalCost = null;
   let costInfo = '';
+  const timeoutMs = requestTimeoutMs;
+  const timeoutState = { timedOut: false };
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
       signal
-      });
+    }, timeoutMs, timeoutState);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -4095,10 +4147,13 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
         responseParsed: parsed
       });
       return parsed;
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw error;
-      }
+  } catch (error) {
+    if (error && error.name === 'AbortError' && timeoutState.timedOut) {
+      throw buildTimeoutError(timeoutMs);
+    }
+    if (error.name === 'AbortError') {
+      throw error;
+    }
       const isNetworkError = error.message && error.message.includes('fetch');
       if (isNetworkError && retryCount < MAX_RETRY_ATTEMPTS - 1) {
         const attempt = retryCount + 2;
@@ -4194,9 +4249,11 @@ async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0, 
     currentAbortController = controller;
     signal = controller.signal;
   }
+  const timeoutMs = requestTimeoutMs;
+  const timeoutState = { timedOut: false };
 
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent`,
       {
         method: 'POST',
@@ -4206,7 +4263,9 @@ async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0, 
         },
         body: JSON.stringify(body),
         signal
-      }
+      },
+      timeoutMs,
+      timeoutState
     );
 
     if (!response.ok) {
@@ -4302,6 +4361,9 @@ async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0, 
     });
     return parsed;
   } catch (error) {
+    if (error && error.name === 'AbortError' && timeoutState.timedOut) {
+      throw buildTimeoutError(timeoutMs);
+    }
     if (error.name === 'AbortError') {
       throw error;
     }
@@ -4543,7 +4605,7 @@ async function handleAnalysis() {
             }
             return { ok: true, mapped, unmatched };
           } catch (err) {
-            if (err && err.name === 'AbortError') {
+            if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
               throw err;
             }
             return { ok: false, error: err };
@@ -5529,6 +5591,7 @@ async function handleCommentsImport() {
 
 function setActiveSuggestionMark(newIndex, options = {}) {
   const { scroll = true } = options;
+  if (!highlightOverlay) return;
 
   // Clear previous active mark
   const prevActive = highlightOverlay.querySelector('.suggestion.active');
@@ -7603,7 +7666,7 @@ function computeUploadTimeoutMs(file) {
   return Math.min(Math.max(timeout, UPLOAD_TIMEOUT_BASE_MS), UPLOAD_TIMEOUT_MAX_MS);
 }
 
-function fetchWithTimeout(url, options = {}, timeoutMs = UPLOAD_TIMEOUT_BASE_MS) {
+function fetchWithTimeout(url, options = {}, timeoutMs = UPLOAD_TIMEOUT_BASE_MS, timeoutState = null) {
   const controller = new AbortController();
   const externalSignal = options.signal;
   const onAbort = () => controller.abort();
@@ -7617,7 +7680,10 @@ function fetchWithTimeout(url, options = {}, timeoutMs = UPLOAD_TIMEOUT_BASE_MS)
   }
 
   const useTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
-  const timerId = useTimeout ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const timerId = useTimeout ? setTimeout(() => {
+    if (timeoutState) timeoutState.timedOut = true;
+    controller.abort();
+  }, timeoutMs) : null;
   const fetchOptions = { ...options, signal: controller.signal };
 
   return fetch(url, fetchOptions).finally(() => {

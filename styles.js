@@ -1,18 +1,7 @@
 window.WRITING_RULES = window.WRITING_RULES || {};
 
-/* 
-// Add your own style here if you like
-window.WRITING_RULES['user_style_1'] = { name: 'USER CREATED STYLE', prompt: `
-
-  
-ADD YOUR TEXT HERE, CHANGING NAME ABOVE TO THE STYLE NAME
-
-  
-` };
-*/
-
-
-
+// Add your own style here if you like:
+// window.WRITING_RULES['user_style_1'] = { name: 'USER CREATED STYLE', prompt: `ADD YOUR TEXT HERE` };
 
 window.WRITING_RULES['literary_nonfiction'] = {
   name: 'Literary Nonfiction',
