@@ -104,6 +104,8 @@ body {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border-color);
+  align-self: stretch;
+  width: 100%;
 }
 
 .nav-info {
@@ -116,6 +118,7 @@ body {
   font-family: var(--font-sans);
   color: #666;
   font-weight: 500;
+  width: 100%;
 }
 
 .model-summary-btn {
@@ -144,6 +147,62 @@ body {
   padding: 2px 4px;
 }
 
+.multi-selection-note {
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  color: #444;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.multi-selection-panel {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin-top: 6px;
+  width: 100%;
+  background: #f7f8ff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+}
+
+.multi-selection-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.multi-selection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.multi-selection-row .selection-label {
+  font-size: 0.75rem;
+  color: #333;
+}
+
+.multi-selection-remove {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.multi-selection-remove:hover {
+  border-color: #666;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -161,6 +220,8 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
+  align-self: stretch;
+  width: 100%;
 }
 
 /* Selection actions */
@@ -445,12 +506,13 @@ body {
 .nav-arrow-group {
     display: flex;
     gap: 8px;
+    width: 100%;
 }
 
 /* Styles the smaller arrow buttons within the new layout */
 .nav-arrow-group .nav-btn {
     flex: 1; /* Makes both buttons share the width equally */
-    width: auto; /* Overrides the default fixed width */
+    width: 100%;
     height: 36px; /* Makes the buttons shorter */
     padding: 0;
     font-size: 1.2rem;
@@ -684,6 +746,7 @@ body {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border-color);
+  width: 100%;
 }
 
 .correction-actions .popover-btn {
@@ -784,6 +847,32 @@ body {
   background-color: var(--user-highlight);
   border-radius: 3px;
   position: relative;
+}
+
+/* ───── Multi-Selection Highlighting ───── */
+.multi-selection-range {
+  background-color: rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  border-radius: 3px;
+  position: relative;
+  padding-left: 22px;
+}
+
+.selection-badge {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  background: #2563eb;
+  color: #ffffff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
 }
 
 /* ───── Suggestion Popover ───── */
@@ -1607,6 +1696,10 @@ body {
     <button class="selection-btn analyze-btn" id="importOptionsBtn">Import Comments</button>
     <button class="selection-btn analyze-btn" id="deepAuditBtn">Deep Audit</button>
   </div>
+  <div class="multi-selection-note" id="multiSelectionNote" style="display: none;">
+    Multi-selection active: selections run sequentially (no chunking).
+  </div>
+  <div class="multi-selection-panel" id="multiSelectionPanel" style="display: none;"></div>
 
   <!-- Navigation controls (visible during corrections) -->
   <div class="correction-controls" id="correctionControls" style="display: none;">
@@ -1627,6 +1720,7 @@ body {
   <div class="nav-info no-suggestions" id="noSuggestionsBadge" style="display:none;">No suggestions</div>
   <div class="no-suggestions-actions" id="noSuggestionsActions" style="display:none;">
     <button class="selection-btn analyze-btn" id="viewDiffShortcutBtn">View Global Diff</button>
+    <button class="selection-btn analyze-btn" id="reviewLastEditsBtn">Review Last Edits</button>
   </div>
 </div>
   
@@ -1727,9 +1821,6 @@ body {
         <option value="1200000">Request timeout: 20 min</option>
         <option value="1800000">Request timeout: 30 min</option>
       </select>
-      <div id="requestTimeoutHint" class="shortcut-hint" style="margin-top:6px;">
-        Off disables the timeout; long runs may need more time.
-      </div>
     </div>
     <div class="menu-select-group">
       <label for="toolsModeSelect" class="sr-only">Tools:</label>
@@ -2118,7 +2209,7 @@ body {
       <li><strong>Proof:</strong> Beta logic check for a selected theorem and proof.</li>
       <li><strong>Custom Ask:</strong> Ask a question about selected text; returns comments plus suggestions.</li>
     </ul>
-    <p>Selections include a small read-only context window; full-document runs include the LaTeX preamble.</p>
+    <p>Selections include a small read-only context window. You can optionally add the full document as an extra read-only context message (costly). Full-document runs include the LaTeX preamble.</p>
 
     <h3>Files and history</h3>
     <ul>
@@ -2126,6 +2217,7 @@ body {
       <li><strong>Supporting files:</strong> Sent with your prompt and count toward cost.</li>
       <li><strong>Run history:</strong> Optional local storage in this browser profile.</li>
       <li><strong>Sessions:</strong> Save or load snapshots from the menu.</li>
+      <li><strong>Request timeout:</strong> Optional menu setting; Off by default. Use it if a run hangs.</li>
     </ul>
 
     <h3>Privacy and safety</h3>
@@ -2214,6 +2306,21 @@ body {
     <button class="file-btn" id="supportingConfirmNoChunk" style="display:none;">Run single chunk (lower cost)</button>
     <button class="file-btn" id="supportingConfirmAccept">Continue</button>
     <button class="file-btn supporting-confirm-cancel" id="supportingConfirmCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- Selection Context Modal -->
+<div class="modal-overlay" id="selectionContextOverlay"></div>
+<div class="summary-modal" id="selectionContextModal" role="dialog" aria-modal="true" aria-labelledby="selectionContextTitle" tabindex="-1">
+  <button class="summary-close" id="selectionContextClose" aria-label="Close dialog">×</button>
+  <h2 id="selectionContextTitle">Selection Context</h2>
+  <div class="summary-section" id="selectionContextBody">
+    <p style="color:#444; font-size:0.95rem;">Include the full document as additional context for this run?</p>
+    <p style="color:#666; font-size:0.85rem;">Local context always includes ±1000 characters around each selection.</p>
+  </div>
+  <div class="supporting-confirm-actions">
+    <button class="file-btn" id="selectionContextLocalBtn">Use local context only</button>
+    <button class="file-btn" id="selectionContextFullBtn">Include full document</button>
   </div>
 </div>
 

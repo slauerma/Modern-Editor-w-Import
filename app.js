@@ -5,6 +5,10 @@ let undoStack = [];
 let selectedText = '';
 let selectedRange = null;
 let selectionMode = false;
+let multiSelectionMode = false;
+let multiSelections = [];
+let lastMouseDownHadModifier = false;
+let nextSelectionId = 1;
 let runLog = [];
 const MAX_RUN_LOG = 500;
 const RUN_HISTORY_ENABLED_KEY = 'runHistoryEnabled';
@@ -14,6 +18,10 @@ const RUN_HISTORY_MAX_PROMPT_CHARS = 6000;
 const RUN_HISTORY_MAX_RESPONSE_CHARS = 12000;
 const RUN_HISTORY_MAX_RESPONSE_PARSED_CHARS = 12000;
 const RUN_HISTORY_TRUNCATION_SUFFIX = '... [truncated]';
+const REVIEW_DIFF_MAX_CHARS = 24000;
+const REVIEW_PROMPT_MAX_CHARS = 16000;
+const REVIEW_RESPONSE_MAX_CHARS = 16000;
+const REVIEW_TRUNCATION_SUFFIX = '\n...[truncated]';
 const MAX_LAST_RUNS = 25;
 const TOOLS_MODE_KEY = 'toolsMode';
 const REQUEST_TIMEOUT_MS_KEY = 'requestTimeoutMs';
@@ -31,6 +39,9 @@ let lastRuns = [];
 let originalDocumentText = '';
 let preferredToolsMode = null;
 let runHistoryStorageWarning = '';
+let lastReviewCorrections = null;
+let lastReviewDocumentText = '';
+let lastReviewRunStart = '';
 
 function addRunLogEntry(entry) {
   if (!entry || typeof entry !== 'object') return;
@@ -337,6 +348,7 @@ let maxChunkSize = (() => {
 })();
 const MAX_PARALLEL_CALLS = 10;
 const CHUNK_CONTEXT_CHARS = 300;
+const SELECTION_CONTEXT_CHARS = 1000;
 const CHUNK_OVERSHOOT_FRACTION = 0.1;
 const CHUNK_OVERSHOOT_MAX_CHARS = 300;
 const DEEP_AUDIT_PROMPT_OVERRIDE_KEY = 'deepAuditPromptOverride';
@@ -563,6 +575,7 @@ function requirePromptHelper(fn, name) {
 const buildJsonSchema = requirePromptHelper(PROMPT_TEMPLATES.buildJsonSchema, 'buildJsonSchema');
 const generatePrompt = requirePromptHelper(PROMPT_TEMPLATES.generatePrompt, 'generatePrompt');
 const generateChunkPromptMessages = requirePromptHelper(PROMPT_TEMPLATES.generateChunkPromptMessages, 'generateChunkPromptMessages');
+const generateSelectionPromptMessages = requirePromptHelper(PROMPT_TEMPLATES.generateSelectionPromptMessages, 'generateSelectionPromptMessages');
 const generateSimplificationPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateSimplificationPrompt, 'generateSimplificationPrompt');
 const generateProofCheckPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateProofCheckPrompt, 'generateProofCheckPrompt');
 const generateCustomAskPrompt = requirePromptHelper(PROMPT_TEMPLATES.generateCustomAskPrompt, 'generateCustomAskPrompt');
@@ -703,8 +716,15 @@ const supportingConfirmAccept = document.getElementById('supportingConfirmAccept
 const supportingConfirmNoChunk = document.getElementById('supportingConfirmNoChunk');
 const supportingConfirmCancel = document.getElementById('supportingConfirmCancel');
 const supportingConfirmClose = document.getElementById('supportingConfirmClose');
+const selectionContextOverlay = document.getElementById('selectionContextOverlay');
+const selectionContextModal = document.getElementById('selectionContextModal');
+const selectionContextClose = document.getElementById('selectionContextClose');
+const selectionContextLocalBtn = document.getElementById('selectionContextLocalBtn');
+const selectionContextFullBtn = document.getElementById('selectionContextFullBtn');
 const supportingToast = document.getElementById('supportingToast');
 const selectionActions = document.getElementById('selectionActions');
+const multiSelectionNote = document.getElementById('multiSelectionNote');
+const multiSelectionPanel = document.getElementById('multiSelectionPanel');
 const simplifyBtn = document.getElementById('simplifyBtn');
 const proofBtn = document.getElementById('proofBtn');
 const diffOverlay = document.getElementById('diffOverlay');
@@ -803,6 +823,7 @@ let summaryDragOffsetX = 0;
 let summaryDragOffsetY = 0;
 let supportingFiles = [];
 let supportingConfirmResolver = null;
+let selectionContextResolver = null;
 let supportingToastTimer = null;
 let supportingPrepareAbortController = null;
 let supportingPrepareActive = false;
@@ -999,8 +1020,20 @@ function flushSessionNow() {
 }
 
 function updateAutoChunkUI() {
+  const familyKey = resolveFamilySelection();
+  const autoSupported = isParallelSupportedForFamily(familyKey);
   if (chunkSizeModeSelect) {
-    chunkSizeModeSelect.value = autoChunkingEnabled ? 'auto' : 'fixed';
+    const autoOption = chunkSizeModeSelect.querySelector('option[value="auto"]');
+    if (autoOption) {
+      const baseLabel = autoOption.dataset.label || autoOption.textContent.trim();
+      if (!autoOption.dataset.label) autoOption.dataset.label = baseLabel;
+      autoOption.disabled = !autoSupported;
+      autoOption.textContent = autoSupported
+        ? baseLabel
+        : `${baseLabel} (Change model to enable)`;
+    }
+    const effectiveAuto = autoChunkingEnabled && autoSupported;
+    chunkSizeModeSelect.value = effectiveAuto ? 'auto' : 'fixed';
   }
   if (autoChunkHint) {
     autoChunkHint.textContent = 'Auto chunking sizes each run based on text length and parallel calls (only when parallel > 1). Max chunk size is the ceiling.';
@@ -2237,6 +2270,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (corrections.length > 0) {
           resetState();
       }
+      if (multiSelections.length > 0) {
+          clearAllSelections({ skipUpdate: true });
+      }
       handleTextSelection(); // recompute selection state
       updateHighlightOverlay(); // force immediate overlay refresh to avoid ghost/blurry text after paste
       scheduleSessionSave();
@@ -2244,8 +2280,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   
   // Handle text selection
-  documentInput.addEventListener('mouseup', handleTextSelection);
-  documentInput.addEventListener('keyup', handleTextSelection);
+  documentInput.addEventListener('mousedown', (e) => {
+    lastMouseDownHadModifier = e.ctrlKey || e.metaKey;
+  });
+  documentInput.addEventListener('mouseup', (e) => {
+    handleTextSelection(e);
+    lastMouseDownHadModifier = false;
+  });
+  documentInput.addEventListener('keyup', (e) => handleTextSelection(e));
     updateNavigation();
 
   if (summaryModalHeader) {
@@ -2492,12 +2534,26 @@ if (supportingConfirmNoChunk) supportingConfirmNoChunk.addEventListener('click',
 if (supportingConfirmCancel) supportingConfirmCancel.addEventListener('click', () => closeSupportingConfirm('cancel'));
 if (supportingConfirmClose) supportingConfirmClose.addEventListener('click', () => closeSupportingConfirm('cancel'));
 if (supportingConfirmOverlay) supportingConfirmOverlay.addEventListener('click', () => closeSupportingConfirm('cancel'));
+if (selectionContextLocalBtn) selectionContextLocalBtn.addEventListener('click', () => closeSelectionContextModal(false));
+if (selectionContextFullBtn) selectionContextFullBtn.addEventListener('click', () => closeSelectionContextModal(true));
+if (selectionContextClose) selectionContextClose.addEventListener('click', () => closeSelectionContextModal(false));
+if (selectionContextOverlay) selectionContextOverlay.addEventListener('click', () => closeSelectionContextModal(false));
 simplifyBtn.addEventListener('click', handleSimplification);
 proofBtn.addEventListener('click', handleProofCheck);
 customAskBtn.addEventListener('click', handleCustomAsk);
 const viewDiffShortcutBtn = document.getElementById('viewDiffShortcutBtn');
 if (viewDiffShortcutBtn) {
   viewDiffShortcutBtn.addEventListener('click', showGlobalDiffModal);
+}
+const reviewLastEditsBtn = document.getElementById('reviewLastEditsBtn');
+if (reviewLastEditsBtn) {
+  reviewLastEditsBtn.addEventListener('click', () => {
+    if (!lastRuns.length) {
+      alert('No runs yet. Run an analysis first.');
+      return;
+    }
+    handleReviewEdits(lastRuns[0]);
+  });
 }
 const diffNewWindowBtn = document.getElementById('diffNewWindowBtn');
 if (diffNewWindowBtn) {
@@ -2513,6 +2569,15 @@ if (customPromptReset) customPromptReset.addEventListener('click', resetCustomPr
 if (customPromptRun) customPromptRun.addEventListener('click', handleCustomPromptRun);
 cancelRequestBtn.addEventListener('click', abortInFlightRequest);
 rejectAllBtn.addEventListener('click', rejectAllCorrections);
+if (multiSelectionPanel) {
+  multiSelectionPanel.addEventListener('click', (e) => {
+    const btn = e.target.closest('.multi-selection-remove');
+    if (!btn) return;
+    const selId = Number(btn.dataset.selId);
+    if (!Number.isFinite(selId)) return;
+    removeSelection(selId);
+  });
+}
 if (popoverEditBtn) {
   popoverEditBtn.addEventListener('click', () => {
     const correction = corrections[currentIndex];
@@ -2644,10 +2709,14 @@ document.addEventListener('keydown', (e) => {
     closeFileModal();
     closeSupportingFilesModal();
     closeSupportingConfirm('cancel');
+    closeSelectionContextModal(false);
     closeDeepAuditModal();
     closeDeepAuditReportModal();
     closeDeepAuditPromptModal();
     closeRunHistoryModal();
+    if (multiSelections.length > 0) {
+      clearAllSelections();
+    }
     return;
   }
 
@@ -3070,24 +3139,45 @@ function resetState(options = {}) {
     }
 }
 
-function handleTextSelection() {
+function handleTextSelection(event) {
     const hasSelection = documentInput.selectionStart !== documentInput.selectionEnd;
-  
-    if (hasSelection) {
-        selectionMode = true;
-        selectedText = documentInput.value.substring(documentInput.selectionStart, documentInput.selectionEnd);
-        selectedRange = {
-            start: documentInput.selectionStart,
-            end: documentInput.selectionEnd
-        };
-    } else {
+    const isMultiSelectKey = (event && (event.ctrlKey || event.metaKey)) || lastMouseDownHadModifier;
+
+    if (!hasSelection) {
+        if (!multiSelectionMode) {
+            selectionMode = false;
+            selectedText = '';
+            selectedRange = null;
+        }
+        scheduleHighlightUpdate();
+        updateNavigation();
+        updateMultiSelectionUI();
+        return;
+    }
+
+    const newRange = {
+        start: documentInput.selectionStart,
+        end: documentInput.selectionEnd
+    };
+    const newText = documentInput.value.substring(newRange.start, newRange.end);
+
+    if (isMultiSelectKey || (multiSelectionMode && multiSelections.length > 0)) {
+        addSelection(newRange.start, newRange.end, newText);
         selectionMode = false;
         selectedText = '';
         selectedRange = null;
+    } else {
+        selectionMode = true;
+        selectedText = newText;
+        selectedRange = newRange;
+        if (multiSelections.length > 0) {
+            clearAllSelections({ skipUpdate: true });
+        }
     }
-  
+
     scheduleHighlightUpdate();
-    updateNavigation(); 
+    updateNavigation();
+    updateMultiSelectionUI();
 }
 
 function clearUserSelection() {
@@ -3098,10 +3188,110 @@ function clearUserSelection() {
     selectionMode = false;
     selectedText = '';
     selectedRange = null;
+    if (multiSelections.length > 0) {
+        clearAllSelections({ skipUpdate: true });
+    }
 
     // 3. Force the UI to update based on the now-cleared state
     scheduleHighlightUpdate();
     updateNavigation();
+    updateMultiSelectionUI();
+}
+
+function mergeOverlappingSelections(selections) {
+    const ordered = selections
+      .filter(sel => sel && Number.isFinite(sel.start) && Number.isFinite(sel.end) && sel.end > sel.start)
+      .map(sel => {
+        const copy = { ...sel };
+        if (!Number.isFinite(copy.id)) {
+          copy.id = nextSelectionId++;
+        }
+        return copy;
+      })
+      .sort((a, b) => a.start - b.start);
+    const merged = [];
+
+    for (const sel of ordered) {
+        if (!merged.length) {
+            merged.push({ ...sel });
+            continue;
+        }
+        const last = merged[merged.length - 1];
+        if (sel.start <= last.end + 1) {
+            last.end = Math.max(last.end, sel.end);
+            if (!Number.isFinite(last.id)) {
+                last.id = sel.id;
+            }
+        } else {
+            merged.push({ ...sel });
+        }
+    }
+
+    merged.forEach((sel) => {
+        sel.text = documentInput.value.substring(sel.start, sel.end);
+    });
+
+    return merged;
+}
+
+function addSelection(start, end, text) {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+    const entry = { id: nextSelectionId++, start, end, text: text || '' };
+    multiSelections = mergeOverlappingSelections([...multiSelections, entry]);
+    multiSelectionMode = multiSelections.length > 1;
+    updateMultiSelectionUI();
+}
+
+function removeSelection(selectionId) {
+    if (!Number.isFinite(selectionId)) return;
+    multiSelections = multiSelections.filter(sel => sel.id !== selectionId);
+    multiSelectionMode = multiSelections.length > 1;
+    updateMultiSelectionUI();
+    scheduleHighlightUpdate();
+    updateNavigation();
+}
+
+function clearAllSelections(options = {}) {
+    multiSelections = [];
+    multiSelectionMode = false;
+    updateMultiSelectionUI();
+    if (options.skipUpdate) return;
+    scheduleHighlightUpdate();
+    updateNavigation();
+}
+
+function updateMultiSelectionUI() {
+    if (multiSelectionNote) {
+        multiSelectionNote.style.display = multiSelectionMode ? 'block' : 'none';
+    }
+    if (!multiSelectionPanel) return;
+    if (!multiSelections.length) {
+        multiSelectionPanel.style.display = 'none';
+        multiSelectionPanel.innerHTML = '';
+        return;
+    }
+    const ordered = [...multiSelections].sort((a, b) => a.start - b.start);
+    multiSelectionPanel.innerHTML = '';
+    multiSelectionPanel.style.display = 'flex';
+    const title = document.createElement('div');
+    title.className = 'multi-selection-title';
+    title.textContent = `Selections: ${ordered.length}`;
+    multiSelectionPanel.appendChild(title);
+    ordered.forEach((sel, idx) => {
+        const row = document.createElement('div');
+        row.className = 'multi-selection-row';
+        const label = document.createElement('div');
+        label.className = 'selection-label';
+        label.textContent = `Selection ${idx + 1}`;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'multi-selection-remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.dataset.selId = String(sel.id);
+        row.appendChild(label);
+        row.appendChild(removeBtn);
+        multiSelectionPanel.appendChild(row);
+    });
 }
 
 function getOptionLabel(option) {
@@ -3313,6 +3503,7 @@ function refreshToolAvailability() {
   }
 
   refreshParallelCallsUI();
+  updateAutoChunkUI();
 }
 
 function getModelForType(type) {
@@ -4385,12 +4576,42 @@ async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0, 
   }
 }
 
+function showSelectionContextModal() {
+  if (!selectionContextModal || !selectionContextOverlay) {
+    return Promise.resolve(false);
+  }
+  if (selectionContextResolver) {
+    return Promise.resolve(false);
+  }
+  selectionContextModal.classList.add('visible');
+  selectionContextOverlay.classList.add('visible');
+  return new Promise((resolve) => {
+    selectionContextResolver = resolve;
+  });
+}
+
+function closeSelectionContextModal(includeFullDocument) {
+  if (selectionContextModal) selectionContextModal.classList.remove('visible');
+  if (selectionContextOverlay) selectionContextOverlay.classList.remove('visible');
+  if (selectionContextResolver) {
+    const resolve = selectionContextResolver;
+    selectionContextResolver = null;
+    resolve(!!includeFullDocument);
+  }
+}
+
+async function promptSelectionContextMode() {
+  return showSelectionContextModal();
+}
+
 async function handleAnalysis() {
   // Capture selection (if any) before clearing UI state so selection-only analysis works
+  const hasMultiSelection = multiSelections.length > 0;
   const selectionSnapshot = {
-    hasSelection: selectionMode && selectedRange && selectedText && selectedText.trim(),
+    hasSelection: hasMultiSelection || (selectionMode && selectedRange && selectedText && selectedText.trim()),
     range: selectedRange ? { ...selectedRange } : null,
-    text: selectedText
+    text: selectedText,
+    multiSelections: hasMultiSelection ? multiSelections.map(s => ({ ...s })) : []
   };
   const currentText = documentInput.value;
   if (!currentText.trim()) {
@@ -4408,78 +4629,124 @@ async function handleAnalysis() {
   }
 
   const modelConfig = getModelForType(selectedRule.type);
-  const hasSelection = !!selectionSnapshot.hasSelection;
-  let selectionOffset = hasSelection && selectionSnapshot.range ? selectionSnapshot.range.start : 0;
+  const provider = modelConfig.provider || 'openai';
+  const familyKey = modelConfig.family || resolveFamilySelection();
+  const selectionTargets = [];
+
+  if (selectionSnapshot.multiSelections && selectionSnapshot.multiSelections.length) {
+    selectionSnapshot.multiSelections.forEach((sel) => {
+      const start = sel.start;
+      const end = sel.end;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const text = (typeof sel.text === 'string' && sel.text.length)
+        ? sel.text
+        : currentText.substring(start, end);
+      selectionTargets.push({ start, end, text });
+    });
+  } else if (selectionSnapshot.range && selectionSnapshot.range.start !== selectionSnapshot.range.end) {
+    const start = selectionSnapshot.range.start;
+    const end = selectionSnapshot.range.end;
+    const text = typeof selectionSnapshot.text === 'string'
+      ? selectionSnapshot.text
+      : currentText.substring(start, end);
+    selectionTargets.push({ start, end, text });
+  }
+
+  selectionTargets.sort((a, b) => a.start - b.start);
+  const useSelectionTargets = selectionTargets.length > 0;
+  const includeFullDocument = useSelectionTargets ? await promptSelectionContextMode() : false;
+
+  let selectionOffset = 0;
   let analysisText = currentText;
   let contextText = '';
+  let chunks = [];
+  let parallelism = 1;
+  let effectiveChunkSize = maxChunkSize;
+  let autoChunkingActive = false;
+  let allowSupportingFiles = provider === 'openai';
+  let confirmReason = allowSupportingFiles ? '' : 'provider';
+  let forceSingleChunk = false;
 
-  if (hasSelection) {
-    analysisText = selectionSnapshot.text;
-    // Provide a context window around the selection
-    const ctxStart = Math.max(0, selectionSnapshot.range.start - 2000);
-    const ctxEnd = Math.min(currentText.length, selectionSnapshot.range.end + 2000);
-    contextText = currentText.substring(ctxStart, ctxEnd);
-  } else {
+  if (!useSelectionTargets) {
     // Use the full document (including preamble) for full-doc analysis
     const latex = extractLatexContent(currentText);
     analysisText = latex.text;
     selectionOffset = latex.offset || 0;
     contextText = '';
-  }
-  
-  const provider = modelConfig.provider || 'openai';
-  const familyKey = modelConfig.family || resolveFamilySelection();
-  const requestedParallel = normalizeParallelCalls(maxParallelCalls);
-  const parallelEligible = provider === 'openai' && familyKey !== 'gpt5_pro';
-  let autoChunkingActive = autoChunkingEnabled && parallelEligible && requestedParallel > 1;
-  let effectiveChunkSize = autoChunkingActive
-    ? computeAutoChunkSize(analysisText.length, requestedParallel, maxChunkSize)
-    : maxChunkSize;
 
-  // Split text into chunks with offsets
-  let chunks = splitTextIntoChunksWithOffsets(analysisText, effectiveChunkSize);
-  let parallelism = parallelEligible
-    ? Math.min(requestedParallel, chunks.length)
-    : 1;
-  if (!Number.isFinite(parallelism) || parallelism < 1) parallelism = 1;
-  const chunkingActive = chunks.length > 1;
-  let allowSupportingFiles = provider === 'openai' && chunks.length <= 1 && parallelism <= 1;
-  let confirmReason = provider !== 'openai'
-    ? 'provider'
-    : (allowSupportingFiles ? '' : (chunkingActive && parallelism > 1 ? 'chunking+parallel' : (parallelism > 1 ? 'parallel' : 'chunking')));
-  let forceSingleChunk = false;
+    const requestedParallel = normalizeParallelCalls(maxParallelCalls);
+    const parallelEligible = provider === 'openai' && familyKey !== 'gpt5_pro';
+    autoChunkingActive = autoChunkingEnabled && parallelEligible && requestedParallel > 1;
+    effectiveChunkSize = autoChunkingActive
+      ? computeAutoChunkSize(analysisText.length, requestedParallel, maxChunkSize)
+      : maxChunkSize;
 
-  if (supportingFiles.length) {
+    // Split text into chunks with offsets
+    chunks = splitTextIntoChunksWithOffsets(analysisText, effectiveChunkSize);
+    parallelism = parallelEligible
+      ? Math.min(requestedParallel, chunks.length)
+      : 1;
+    if (!Number.isFinite(parallelism) || parallelism < 1) parallelism = 1;
+    const chunkingActive = chunks.length > 1;
+    allowSupportingFiles = provider === 'openai' && chunks.length <= 1 && parallelism <= 1;
+    confirmReason = provider !== 'openai'
+      ? 'provider'
+      : (allowSupportingFiles ? '' : (chunkingActive && parallelism > 1 ? 'chunking+parallel' : (parallelism > 1 ? 'parallel' : 'chunking')));
+
+    if (supportingFiles.length) {
+      const confirmation = await confirmSupportingFilesBeforeRun({
+        runLabel: selectedRule.name,
+        modelConfig,
+        allowSupportingFiles,
+        reason: confirmReason,
+        analysisTextLength: analysisText.length
+      });
+      if (!confirmation.ok) return;
+      forceSingleChunk = confirmation.forceSingleChunk;
+    }
+
+    if (forceSingleChunk) {
+      autoChunkingActive = false;
+      effectiveChunkSize = Math.max(analysisText.length, MIN_CHUNK_SIZE);
+      chunks = splitTextIntoChunksWithOffsets(analysisText, effectiveChunkSize);
+      parallelism = 1;
+      allowSupportingFiles = provider === 'openai' && chunks.length <= 1;
+      confirmReason = allowSupportingFiles ? '' : 'chunking';
+    }
+  } else if (supportingFiles.length) {
+    const selectionLength = selectionTargets.reduce((sum, target) => sum + target.text.length, 0);
+    const analysisLength = includeFullDocument ? currentText.length : selectionLength;
     const confirmation = await confirmSupportingFilesBeforeRun({
       runLabel: selectedRule.name,
       modelConfig,
       allowSupportingFiles,
       reason: confirmReason,
-      analysisTextLength: analysisText.length
+      analysisTextLength: analysisLength
     });
     if (!confirmation.ok) return;
-    forceSingleChunk = confirmation.forceSingleChunk;
-  }
-
-  if (forceSingleChunk) {
-    autoChunkingActive = false;
-    effectiveChunkSize = Math.max(analysisText.length, MIN_CHUNK_SIZE);
-    chunks = splitTextIntoChunksWithOffsets(analysisText, effectiveChunkSize);
-    parallelism = 1;
-    allowSupportingFiles = provider === 'openai' && chunks.length <= 1;
-    confirmReason = allowSupportingFiles ? '' : 'chunking';
   }
 
   clearUserSelection();
   resetState();
   loadingOverlay.style.display = 'flex';
   if (loadingSettings) {
-    loadingSettings.textContent = getCurrentSettingsSummaryWithOptions(modelConfig, {
-      parallelism,
-      chunkCount: chunks.length,
-      chunkSize: effectiveChunkSize,
-      autoChunking: autoChunkingActive
-    });
+    if (useSelectionTargets) {
+      const selectionLabel = selectionTargets.length > 1
+        ? `Selections: ${selectionTargets.length}`
+        : 'Selection';
+      const contextLabel = includeFullDocument
+        ? 'Context: local + full document'
+        : `Context: local (+/-${SELECTION_CONTEXT_CHARS})`;
+      const summary = getCurrentSettingsSummary(modelConfig);
+      loadingSettings.textContent = [summary, selectionLabel, contextLabel].filter(Boolean).join(' • ');
+    } else {
+      loadingSettings.textContent = getCurrentSettingsSummaryWithOptions(modelConfig, {
+        parallelism,
+        chunkCount: chunks.length,
+        chunkSize: effectiveChunkSize,
+        autoChunking: autoChunkingActive
+      });
+    }
   }
   startLoadingTips();
   let runController = null;
@@ -4493,7 +4760,9 @@ async function handleAnalysis() {
     const modelLabel = MODEL_FAMILIES[modelConfig.family]?.label || modelConfig.model;
     if (loadingWarning) {
       if (!allowSupportingFiles && supportingFiles.length) {
-        if (confirmReason === 'chunking+parallel') {
+        if (useSelectionTargets) {
+          loadingWarning.textContent = 'Supporting files skipped because the selected provider does not support attachments.';
+        } else if (confirmReason === 'chunking+parallel') {
           loadingWarning.textContent = 'Supporting files skipped because chunking and parallel processing are active. Disable parallel calls or increase chunk size to include them.';
         } else if (parallelism > 1) {
           loadingWarning.textContent = 'Supporting files skipped because parallel processing is active. Disable parallel calls to include them.';
@@ -4506,90 +4775,96 @@ async function handleAnalysis() {
         loadingWarning.style.display = 'none';
       }
     }
-    loadingText.textContent = `Analyzing with ${selectedRule.name} (${modelLabel})...`;
+    if (useSelectionTargets) {
+      const label = selectionTargets.length > 1 ? 'selections' : 'selection';
+      loadingText.textContent = `Analyzing ${label} with ${selectedRule.name} (${modelLabel})...`;
+    } else {
+      loadingText.textContent = `Analyzing with ${selectedRule.name} (${modelLabel})...`;
+    }
     
     const mappedCorrections = [];
     const unmatchedCorrections = [];
     const failedChunks = [];
+    const failedSelections = [];
     const responseType = selectedRule.type === 'grammar' ? 'grammar' : 'style';
-    const useChunkMessages = chunks.length > 1;
+    if (useSelectionTargets) {
+      for (let i = 0; i < selectionTargets.length; i++) {
+        const target = selectionTargets[i];
+        if (selectionTargets.length > 1) {
+          loadingText.textContent = `Analyzing selection ${i + 1} of ${selectionTargets.length}...`;
+        }
 
-    if (parallelism <= 1) {
-      // Process each chunk sequentially
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        loadingText.textContent = `Analyzing part ${i + 1} of ${chunks.length}...`;
-
-        const chunkContext = useChunkMessages
-          ? getChunkContextWindow(analysisText, chunk, CHUNK_CONTEXT_CHARS)
-          : null;
-        const prompt = useChunkMessages
-          ? generateChunkPromptMessages({
-              text: chunk.text,
-              rule: selectedRule,
-              contextBefore: chunkContext.before,
-              contextAfter: chunkContext.after,
-              extraContext: contextText,
-              chunkIndex: i,
-              chunkCount: chunks.length
-            })
-          : generatePrompt(chunk.text, selectedRule, contextText);
-        const results = await callModelAPI(prompt, modelConfig, responseType, 0, {
-          allowSupportingFiles,
-          skipReason: confirmReason,
-          signal: runController.signal
+        const contextStart = Math.max(0, target.start - SELECTION_CONTEXT_CHARS);
+        const contextEnd = Math.min(currentText.length, target.end + SELECTION_CONTEXT_CHARS);
+        const contextBefore = currentText.substring(contextStart, target.start);
+        const contextAfter = currentText.substring(target.end, contextEnd);
+        const prompt = generateSelectionPromptMessages({
+          text: target.text,
+          rule: selectedRule,
+          contextBefore,
+          contextAfter,
+          includeFullDocument,
+          fullDocumentText: includeFullDocument ? currentText : ''
         });
 
-        if (Array.isArray(results)) {
-          let { mapped, unmatched } = mapCorrectionsToPositions(
-            results,
-            chunk.text,
-            selectionOffset + chunk.start
-          );
-          if (unmatched.length) {
-            const stable = mergeStableChunkMappings(
-              mapped,
-              unmatched,
-              chunk.text,
-              selectionOffset + chunk.start
+        try {
+          const results = await callModelAPI(prompt, modelConfig, responseType, 0, {
+            allowSupportingFiles,
+            skipReason: confirmReason,
+            signal: runController.signal
+          });
+          if (Array.isArray(results)) {
+            const { mapped, unmatched } = mapCorrectionsToPositions(
+              results,
+              target.text,
+              target.start
             );
-            mapped = stable.mapped;
-            unmatched = stable.unmatched;
+            if (mapped.length) {
+              mappedCorrections.push(...mapped);
+            }
+            if (unmatched.length) {
+              unmatchedCorrections.push(...unmatched);
+            }
           }
-          if (mapped.length) {
-            mappedCorrections.push(...mapped);
+        } catch (err) {
+          if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+            throw err;
           }
-          if (unmatched.length) {
-            unmatchedCorrections.push(...unmatched);
-          }
+          failedSelections.push(i);
         }
       }
     } else {
-      const perChunk = await mapWithConcurrency(
-        chunks,
-        async (chunk, idx) => {
-          try {
-            const chunkContext = useChunkMessages
-              ? getChunkContextWindow(analysisText, chunk, CHUNK_CONTEXT_CHARS)
-              : null;
-            const prompt = useChunkMessages
-              ? generateChunkPromptMessages({
-                  text: chunk.text,
-                  rule: selectedRule,
-                  contextBefore: chunkContext.before,
-                  contextAfter: chunkContext.after,
-                  extraContext: contextText,
-                  chunkIndex: idx,
-                  chunkCount: chunks.length
-                })
-              : generatePrompt(chunk.text, selectedRule, contextText);
-            const results = await callModelAPI(prompt, modelConfig, responseType, 0, {
-              allowSupportingFiles,
-              skipReason: confirmReason,
-              signal: runController.signal
-            });
+      const useChunkMessages = chunks.length > 1;
+
+      if (parallelism <= 1) {
+        // Process each chunk sequentially
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          loadingText.textContent = `Analyzing part ${i + 1} of ${chunks.length}...`;
+
+          const chunkContext = useChunkMessages
+            ? getChunkContextWindow(analysisText, chunk, CHUNK_CONTEXT_CHARS)
+            : null;
+          const prompt = useChunkMessages
+            ? generateChunkPromptMessages({
+                text: chunk.text,
+                rule: selectedRule,
+                contextBefore: chunkContext.before,
+                contextAfter: chunkContext.after,
+                extraContext: contextText,
+                chunkIndex: i,
+                chunkCount: chunks.length
+              })
+            : generatePrompt(chunk.text, selectedRule, contextText);
+          const results = await callModelAPI(prompt, modelConfig, responseType, 0, {
+            allowSupportingFiles,
+            skipReason: confirmReason,
+            signal: runController.signal
+          });
+
+          if (Array.isArray(results)) {
             let { mapped, unmatched } = mapCorrectionsToPositions(
-              Array.isArray(results) ? results : [],
+              results,
               chunk.text,
               selectionOffset + chunk.start
             );
@@ -4603,35 +4878,83 @@ async function handleAnalysis() {
               mapped = stable.mapped;
               unmatched = stable.unmatched;
             }
-            return { ok: true, mapped, unmatched };
-          } catch (err) {
-            if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
-              throw err;
+            if (mapped.length) {
+              mappedCorrections.push(...mapped);
             }
-            return { ok: false, error: err };
-          }
-        },
-        {
-          concurrency: parallelism,
-          signal: runController.signal,
-          onProgress: ({ done, total, active }) => {
-            loadingText.textContent = `Analyzing… ${done}/${total} chunks complete (${active} in flight)`;
+            if (unmatched.length) {
+              unmatchedCorrections.push(...unmatched);
+            }
           }
         }
-      );
+      } else {
+        const perChunk = await mapWithConcurrency(
+          chunks,
+          async (chunk, idx) => {
+            try {
+              const chunkContext = useChunkMessages
+                ? getChunkContextWindow(analysisText, chunk, CHUNK_CONTEXT_CHARS)
+                : null;
+              const prompt = useChunkMessages
+                ? generateChunkPromptMessages({
+                    text: chunk.text,
+                    rule: selectedRule,
+                    contextBefore: chunkContext.before,
+                    contextAfter: chunkContext.after,
+                    extraContext: contextText,
+                    chunkIndex: idx,
+                    chunkCount: chunks.length
+                  })
+                : generatePrompt(chunk.text, selectedRule, contextText);
+              const results = await callModelAPI(prompt, modelConfig, responseType, 0, {
+                allowSupportingFiles,
+                skipReason: confirmReason,
+                signal: runController.signal
+              });
+              let { mapped, unmatched } = mapCorrectionsToPositions(
+                Array.isArray(results) ? results : [],
+                chunk.text,
+                selectionOffset + chunk.start
+              );
+              if (unmatched.length) {
+                const stable = mergeStableChunkMappings(
+                  mapped,
+                  unmatched,
+                  chunk.text,
+                  selectionOffset + chunk.start
+                );
+                mapped = stable.mapped;
+                unmatched = stable.unmatched;
+              }
+              return { ok: true, mapped, unmatched };
+            } catch (err) {
+              if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+                throw err;
+              }
+              return { ok: false, error: err };
+            }
+          },
+          {
+            concurrency: parallelism,
+            signal: runController.signal,
+            onProgress: ({ done, total, active }) => {
+              loadingText.textContent = `Analyzing… ${done}/${total} chunks complete (${active} in flight)`;
+            }
+          }
+        );
 
-      perChunk.forEach((result, idx) => {
-        if (result && result.ok) {
-          if (result.mapped && result.mapped.length) {
-            mappedCorrections.push(...result.mapped);
+        perChunk.forEach((result, idx) => {
+          if (result && result.ok) {
+            if (result.mapped && result.mapped.length) {
+              mappedCorrections.push(...result.mapped);
+            }
+            if (result.unmatched && result.unmatched.length) {
+              unmatchedCorrections.push(...result.unmatched);
+            }
+          } else {
+            failedChunks.push(idx);
           }
-          if (result.unmatched && result.unmatched.length) {
-            unmatchedCorrections.push(...result.unmatched);
-          }
-        } else {
-          failedChunks.push(idx);
-        }
-      });
+        });
+      }
     }
 
     mappedCorrections.sort((a, b) => a.position.start - b.position.start);
@@ -4644,6 +4967,15 @@ async function handleAnalysis() {
     if (failedChunks.length) {
       const chunkLabel = failedChunks.length === 1 ? 'chunk' : 'chunks';
       const notice = `Partial run: ${failedChunks.length} ${chunkLabel} failed. Suggestions include completed chunks only.`;
+      if (loadingWarning) {
+        loadingWarning.textContent = notice;
+        loadingWarning.style.display = 'block';
+      }
+      alert(notice);
+    }
+    if (failedSelections.length) {
+      const selLabel = failedSelections.length === 1 ? 'selection' : 'selections';
+      const notice = `Partial run: ${failedSelections.length} ${selLabel} failed. Suggestions include completed selections only.`;
       if (loadingWarning) {
         loadingWarning.textContent = notice;
         loadingWarning.style.display = 'block';
@@ -4982,34 +5314,94 @@ function closeSummaryModal() {
   centerSummaryModal();
 }
 
+function applyCorrectionsArray(correctionsArray, options = {}) {
+  if (!Array.isArray(correctionsArray)) {
+    alert('No corrections were provided.');
+    return false;
+  }
+
+  const fullText = documentInput.value;
+  if (!fullText.trim()) {
+    alert('Document is empty; paste or load your text first.');
+    return false;
+  }
+
+  if (!originalDocumentText) {
+    originalDocumentText = fullText;
+  }
+
+  resetState();
+
+  const latex = extractLatexContent(fullText);
+  const analysisText = latex.text;
+  const baseOffset = latex.offset || 0;
+  let { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset);
+  const overlapCheck = filterOverlappingCorrections(mapped);
+  mapped = overlapCheck.kept;
+  if (overlapCheck.dropped.length) {
+    unmatched = unmatched.concat(overlapCheck.dropped);
+  }
+
+  if (!mapped.length) {
+    alert('No corrections could be mapped to this document.');
+    return false;
+  }
+
+  if (unmatched.length) {
+    console.warn('Unmatched corrections:', unmatched.slice(0, 5));
+    showUnmatchedSuggestions(unmatched, {
+      mappedCount: mapped.length,
+      title: options.unmatchedTitle || 'Unmatched suggestions'
+    });
+  }
+
+  corrections = mapped;
+  currentIndex = 0;
+  documentInput.readOnly = true;
+  documentInput.classList.add('locked');
+  updateHighlightOverlay();
+  updateActiveCorrection();
+  scheduleSessionSave();
+  return true;
+}
+
 function updateHighlightOverlay() {
   highlightUpdateQueued = false;
   const currentText = documentInput.value;
   let html = '';
   let lastPos = 0;
-  
-  // Only render selection overlay when not in correction mode
-  if (selectionMode && selectedRange && corrections.length === 0) {
+
+  if (multiSelections.length > 0 && corrections.length === 0) {
+    const ordered = [...multiSelections].sort((a, b) => a.start - b.start);
+    ordered.forEach((sel, idx) => {
+      html += escapeHtml(currentText.substring(lastPos, sel.start));
+      html += `<mark class="multi-selection-range" data-sel-id="${sel.id}">`;
+      html += `<span class="selection-badge">${idx + 1}</span>`;
+      html += `${escapeHtml(currentText.substring(sel.start, sel.end))}</mark>`;
+      lastPos = sel.end;
+    });
+    html += escapeHtml(currentText.substring(lastPos));
+  } else if (selectionMode && selectedRange && corrections.length === 0) {
     html += escapeHtml(currentText.substring(0, selectedRange.start));
     html += `<mark class="user-selection">${escapeHtml(currentText.substring(selectedRange.start, selectedRange.end))}</mark>`;
     lastPos = selectedRange.end;
-  }
-  
-  // Then handle corrections
-  if (corrections.length > 0) {
+    html += escapeHtml(currentText.substring(lastPos));
+  } else if (corrections.length > 0) {
     corrections.forEach((correction, index) => {
       html += escapeHtml(currentText.substring(lastPos, correction.position.start));
-      
+
       const originalText = currentText.substring(correction.position.start, correction.position.end);
       html += `<mark class="suggestion" data-index="${index}">${escapeHtml(originalText)}</mark>`;
-      
+
       lastPos = correction.position.end;
     });
+    html += escapeHtml(currentText.substring(lastPos));
+  } else {
+    html = escapeHtml(currentText);
   }
-  
-  html += escapeHtml(currentText.substring(lastPos));
   highlightOverlay.innerHTML = html;
   highlightOverlay.classList.toggle('has-suggestions', corrections.length > 0);
+  highlightOverlay.classList.toggle('multi-selection-mode', multiSelections.length > 0);
   documentInput.style.height = highlightOverlay.offsetHeight + 'px';
 }
 
@@ -5362,46 +5754,12 @@ function handleJsonImport() {
     return;
   }
 
-  const fullText = documentInput.value;
-  if (!fullText.trim()) {
+  if (!documentInput.value.trim()) {
     alert('Document is empty; paste or load your text first. If import keeps failing, try Unstructured Comments or regenerate JSON via the two-step table→JSON approach.');
     return;
   }
-
-  // If no baseline is set yet, set it to the current text so Global Diff works
-  if (!originalDocumentText) {
-    originalDocumentText = fullText;
-  }
-
-  resetState();
-
-  const latex = extractLatexContent(fullText);
-  const analysisText = latex.text;
-  const baseOffset = latex.offset || 0;
-  let { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset);
-  const overlapCheck = filterOverlappingCorrections(mapped);
-  mapped = overlapCheck.kept;
-  if (overlapCheck.dropped.length) {
-    unmatched = unmatched.concat(overlapCheck.dropped);
-  }
-
-  if (!mapped.length) {
-    alert('No corrections could be mapped to this document.');
-    return;
-  }
-
-  if (unmatched.length) {
-    console.warn('Unmatched corrections:', unmatched.slice(0, 5));
-    showUnmatchedSuggestions(unmatched, { mappedCount: mapped.length });
-  }
-
-  corrections = mapped;
-  currentIndex = 0;
-  documentInput.readOnly = true;
-  documentInput.classList.add('locked');
-  updateHighlightOverlay(); // ensure highlights render immediately before showing popover
-  updateActiveCorrection();
-  scheduleSessionSave();
+  const applied = applyCorrectionsArray(correctionsArray);
+  if (!applied) return;
 
   if (jsonModal) jsonModal.classList.remove('visible');
   if (jsonOverlay) jsonOverlay.classList.remove('visible');
@@ -5703,7 +6061,8 @@ function updateNavigation() {
     }
 
     // Handle Selection Actions
-    if (selectionMode && selectedText) {
+    const showSelectionActions = selectionMode && selectedText && multiSelections.length === 0;
+    if (showSelectionActions) {
         selectionActions.style.display = 'flex';
         const proofKeywords = /\\(?:theorem|proposition|lemma|proof)|\b(?:theorem|proposition|lemma|proof)\b/i;
         const hasProofContent = proofKeywords.test(selectedText);
@@ -5803,6 +6162,8 @@ function rejectCorrection(index) {
 
 function rejectAllCorrections() {
   if (!corrections.length) return;
+  const ok = confirm('Reject all suggestions? This cannot be undone.');
+  if (!ok) return;
   resetState();
   updateHighlightOverlay();
 }
@@ -6177,6 +6538,186 @@ function downloadGlobalDiff() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function truncateReviewText(value, limit) {
+  const text = typeof value === 'string' ? value : String(value ?? '');
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return { text, truncated: false, originalLength: text.length };
+  }
+  if (text.length <= limit) {
+    return { text, truncated: false, originalLength: text.length };
+  }
+  const sliceLimit = Math.max(0, limit - REVIEW_TRUNCATION_SUFFIX.length);
+  return {
+    text: `${text.slice(0, sliceLimit)}${REVIEW_TRUNCATION_SUFFIX}`,
+    truncated: true,
+    originalLength: text.length
+  };
+}
+
+function formatReviewBlock(label, payload, fence) {
+  const note = payload.truncated ? `\n[Truncated from ${payload.originalLength} chars]` : '';
+  const lang = fence || 'text';
+  return `${label}:\n\n\`\`\`${lang}\n${payload.text}\n\`\`\`${note}`;
+}
+
+function applyReviewCorrections() {
+  if (!Array.isArray(lastReviewCorrections) || lastReviewCorrections.length === 0) {
+    alert('No review suggestions to apply.');
+    return;
+  }
+  if (corrections.length > 0) {
+    const ok = confirm('Replace current suggestions with the review suggestions?');
+    if (!ok) return;
+  }
+  const currentText = documentInput.value || '';
+  if (lastReviewDocumentText && currentText !== lastReviewDocumentText) {
+    const ok = confirm('The document changed since the review. Apply suggestions anyway?');
+    if (!ok) return;
+  }
+  const applied = applyCorrectionsArray(lastReviewCorrections, {
+    unmatchedTitle: 'Unmatched review suggestions'
+  });
+  if (applied) {
+    closeSummaryModal();
+  }
+}
+
+async function handleReviewEdits(run) {
+  if (!run) return;
+  if (!originalDocumentText) {
+    alert('No baseline document is available yet. Load a file, the sample, or run an analysis to set a baseline.');
+    return;
+  }
+  const currentText = documentInput.value || '';
+  if (currentText === originalDocumentText) {
+    alert('No differences found between baseline and current document.');
+    return;
+  }
+
+  const diffText = computeLineDiff(originalDocumentText, currentText);
+  const diffPayload = truncateReviewText(diffText, REVIEW_DIFF_MAX_CHARS);
+  const promptPayload = truncateReviewText(run.prompt || '(none)', REVIEW_PROMPT_MAX_CHARS);
+  const responseSource = run.responseRaw
+    || (run.responseParsed ? JSON.stringify(run.responseParsed, null, 2) : '(none)');
+  const responsePayload = truncateReviewText(responseSource, REVIEW_RESPONSE_MAX_CHARS);
+
+  const baseMessages = [
+    {
+      role: 'system',
+      content: [
+        'You are a meticulous reviewer.',
+        'Compare the DIFF against the last prompt/response.',
+        'Identify risky or unintended changes, mismatches with the stated intent, and anything suspicious.',
+        'If inputs are truncated, mention any uncertainty.'
+      ].join(' ')
+    },
+    { role: 'user', content: formatReviewBlock('DIFF (baseline -> current)', diffPayload, 'diff') },
+    { role: 'user', content: formatReviewBlock('LAST PROMPT', promptPayload, 'text') },
+    { role: 'user', content: formatReviewBlock('LAST RESPONSE', responsePayload, 'text') }
+  ];
+
+  const modelConfig = getModelForType('style');
+  hideLastRunModal();
+  loadingOverlay.style.display = 'flex';
+  if (loadingSettings) {
+    loadingSettings.textContent = getCurrentSettingsSummary(modelConfig);
+  }
+  loadingText.textContent = 'Reviewing last edits...';
+
+  try {
+    const reviewMessages = baseMessages.concat([{
+      role: 'user',
+      content: [
+        'Return:',
+        '1) Verdict (Looks consistent / Needs review)',
+        '2) High-risk items (bulleted, include relevant diff lines)',
+        '3) Checklist for manual verification',
+        'If nothing stands out, say so explicitly.',
+        'Do not propose rewrites; only review.'
+      ].join('\n')
+    }]);
+    const result = await callModelAPI(reviewMessages, modelConfig, 'edit_review', 0, {
+      expectJson: false,
+      disableTools: true,
+      allowSupportingFiles: false
+    });
+    loadingText.textContent = 'Drafting review suggestions...';
+    const suggestionMessages = baseMessages.concat([{
+      role: 'user',
+      content: [
+        'Now return ONLY JSON corrections for the current document.',
+        'Each correction must use an exact "original" snippet from the CURRENT document.',
+        'Use the diff to anchor your snippets; include enough text to be unique.',
+        'If a change is advisory, set type to "comment". Otherwise use "grammar" or "style".',
+        'If no corrections are warranted, return {"corrections": []}.'
+      ].join('\n')
+    }]);
+    const suggestions = await callModelAPI(suggestionMessages, modelConfig, 'mixed', 0, {
+      disableTools: true,
+      allowSupportingFiles: false
+    });
+    const correctionsArray = Array.isArray(suggestions) ? suggestions : [];
+    lastReviewCorrections = correctionsArray;
+    lastReviewDocumentText = currentText;
+    lastReviewRunStart = run.start || '';
+
+    const modalTitle = summaryModal ? summaryModal.querySelector('h2') : null;
+    const originalTitle = modalTitle ? modalTitle.textContent : '';
+    if (modalTitle) modalTitle.textContent = 'Review Edits';
+
+    summaryContent.innerHTML = '';
+
+    const reviewBlock = document.createElement('div');
+    reviewBlock.className = 'log-block';
+    reviewBlock.textContent = result ? String(result) : 'No response.';
+    summaryContent.appendChild(reviewBlock);
+
+    const jsonTitle = document.createElement('h3');
+    jsonTitle.textContent = 'Suggestions (JSON)';
+    summaryContent.appendChild(jsonTitle);
+
+    const jsonBlock = document.createElement('div');
+    jsonBlock.className = 'log-block';
+    jsonBlock.textContent = JSON.stringify({ corrections: correctionsArray }, null, 2);
+    summaryContent.appendChild(jsonBlock);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'file-btn';
+    applyBtn.textContent = 'Review and incorporate suggestions';
+    applyBtn.style.marginTop = '10px';
+    applyBtn.disabled = correctionsArray.length === 0;
+    applyBtn.addEventListener('click', () => {
+      applyReviewCorrections();
+    });
+    summaryContent.appendChild(applyBtn);
+
+    centerSummaryModal();
+    summaryModal.classList.add('visible');
+    modalOverlay.classList.add('visible');
+
+    if (modalTitle) {
+      const restoreTitle = () => {
+        modalTitle.textContent = originalTitle;
+        modalOverlay.removeEventListener('click', restoreTitle);
+        summaryClose.removeEventListener('click', restoreTitle);
+      };
+      modalOverlay.addEventListener('click', restoreTitle);
+      summaryClose.addEventListener('click', restoreTitle);
+    }
+  } catch (error) {
+    if (error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      console.log('Review edits cancelled by user.');
+    } else {
+      alert(`Review failed: ${error.message}`);
+      console.error(error);
+      showApiKeyPromptIfMissing(error, modelConfig?.provider);
+    }
+  } finally {
+    loadingOverlay.style.display = 'none';
+    loadingText.textContent = 'Analyzing...';
+  }
 }
 
 async function handleCustomAsk() {
@@ -7019,6 +7560,14 @@ function showLastRunModal() {
       copyRespBtn.addEventListener('click', () => {
         navigator.clipboard.writeText(run.responseRaw || '').catch(() => {});
       });
+
+      const reviewBtn = document.createElement('button');
+      reviewBtn.className = 'popover-btn';
+      reviewBtn.textContent = 'Check last edits';
+      reviewBtn.style.marginTop = '6px';
+      reviewBtn.addEventListener('click', () => {
+        handleReviewEdits(run);
+      });
   
       const truncate = (s, max = 2000) => {
         if (!s) return '(none)';
@@ -7035,6 +7584,7 @@ function showLastRunModal() {
       wrapper.appendChild(document.createElement('h3')).textContent = 'Response';
       wrapper.appendChild(respBlock);
       wrapper.appendChild(copyRespBtn);
+      wrapper.appendChild(reviewBtn);
       lastRunBody.appendChild(wrapper);
     });
   }
