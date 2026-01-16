@@ -24,7 +24,7 @@
   const LATEX_EDIT_GUIDANCE = 'If you suggest changes for LaTeX commands, ensure the corrected LaTeX remains functional; if unsure or the change would be large, add a comment-only note instead of editing (type "comment", corrected == original).';
   const LOCALIZATION_RULE = 'Localization rule (non-conservative): Make edits granular and anchor them to the smallest standalone span (typically a sentence). Split broad comments into multiple targeted corrections. If several edits belong to one rewrite, note that in the first explanation.';
   const GRAMMAR_ORDER_LINE = 'Important: Return the list of corrections in the order they appear in the document. DOUBLE CHECK THAT SUGGESTIONS YOU MAKE ACTUALLY REQUIRE A CORRECTION - NEVER SUGGEST "No change needed" OR SIMILAR!';
-  const GRAMMAR_FOCUS_GUIDANCE = 'Focus only on clear errors which are unambiguous. DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. You may suggest changes for LaTeX commands (like \\\\documentclass) when needed; keep LaTeX valid and avoid large restructuring. Do not correct single vs. double spaces. Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors.';
+  const GRAMMAR_FOCUS_GUIDANCE = 'DO NOT suggest em dashes or other changes to hyphenation or dash offsets. Follow University of Chicago style guidelines. Do not suggest stylistic changes; the user has a style editor who handles those corrections. You may suggest changes for LaTeX commands (like \\\\documentclass) when needed; keep LaTeX valid and avoid large restructuring. Do not correct single vs. double spaces. Note that the text may be latex, so Latex-style quotation marks (double accent grave, or double apostrophe), or slash before dollar signs or percentages, are not errors.';
 
   function buildJsonExample(typeLabel) {
     return `{\n  "corrections": [\n    { "original": "...", "corrected": "...", "explanation": "...", "type": "${typeLabel}" }\n  ]\n}`;
@@ -56,6 +56,22 @@
       emptyLine
     ];
     return bullets.map(item => `- ${item}`).join('\n');
+  }
+
+  function buildSelectionContextGuidance(text, contextText) {
+    const combined = `${text || ''}\n${contextText || ''}`;
+    if (!/\[SELECTION_\d+]/.test(combined) && !/\[CONTEXT_\d+]/.test(combined)) {
+      return '';
+    }
+    const lines = [
+      'Selection context note:',
+      '- These are snippets from a larger document; snippets may start or end mid-word or mid-sentence.',
+      '- Use [CONTEXT_i] (and [FULL_DOCUMENT] if present) to interpret meaning and check consistency.',
+      '- Do not complete or infer missing letters/words at snippet boundaries.',
+      '- Propose corrections only inside [SELECTION_i] blocks.',
+      '- Every "original" must appear exactly within a [SELECTION_i] block.'
+    ];
+    return lines.join('\n');
   }
 
   function buildCustomPromptBody({
@@ -93,13 +109,14 @@ ${text}
     currentDate,
     boundaryGuidance,
     text,
-    docLabel
+    docLabel,
+    subjectLabel = 'document'
   }) {
     const jsonGuidance = buildJsonParagraphGuidance('grammar', [GRAMMAR_FOCUS_GUIDANCE, LOCALIZATION_RULE], {
       orderLine: GRAMMAR_ORDER_LINE
     });
     const boundaryBlock = boundaryGuidance ? `\n${boundaryGuidance}\n\n` : ' ';
-    return `${baseInstruction}You are an elite editor on ${currentDate}. Analyze the following document for grammatical errors, typos, and spelling mistakes.${boundaryBlock}${jsonGuidance}
+    return `${baseInstruction}You are an elite editor on ${currentDate}. Analyze the following ${subjectLabel} for grammatical errors, typos, and spelling mistakes.${boundaryBlock}${jsonGuidance}
 
 ${docLabel}
 \`\`\`
@@ -142,6 +159,8 @@ ${text}
     const formatInstruction = formatInstructionText();
     const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
+    const boundaryGuidance = buildSelectionContextGuidance(text, contextText);
+    const analysisSubject = boundaryGuidance ? 'snippets from a document' : 'document';
     const contextBlock = contextText ? `\nContext (read-only, do not edit outside the main text):\n\`\`\`\n${contextText}\n\`\`\`\n` : '';
 
     // Custom path: wrap user instructions explicitly
@@ -151,7 +170,7 @@ ${text}
         baseInstruction,
         currentDate,
         userInstructions,
-        boundaryGuidance: '',
+        boundaryGuidance,
         text,
         docLabel: '# Document'
       })}${contextBlock}`;
@@ -161,16 +180,17 @@ ${text}
       return `${buildGrammarPromptBody({
         baseInstruction,
         currentDate,
-        boundaryGuidance: '',
+        boundaryGuidance,
         text,
-        docLabel: 'Document to analyze:'
+        docLabel: 'Document to analyze:',
+        subjectLabel: analysisSubject
       })}${contextBlock}`;
     } else {
       return `${buildStylePromptBody({
         rulePrompt: rule.prompt || '',
         baseInstruction,
         currentDate,
-        boundaryGuidance: '',
+        boundaryGuidance,
         text,
         docLabel: 'Document to analyze:',
         allowGrammar: !!rule.allowGrammar
@@ -191,11 +211,16 @@ ${text}
     const formatInstruction = formatInstructionText();
     const baseInstruction = `${languageInstruction}${formatInstruction}`;
     const currentDate = new Date();
+    const selectionGuidance = buildSelectionContextGuidance(text, extraContext);
     const boundaryGuidance = `Chunk boundary note:
 - This is chunk ${chunkIndex + 1} of ${chunkCount}.
 - Messages 1/3 and 3/3 are read-only context; only edit the text in Message 2/3.
 - The marker "CHUNK CONTINUES" indicates the text is truncated at a boundary; do NOT complete or infer missing text.
 - If a sentence or LaTeX environment is cut off at a boundary, do not rewrite it. If needed, add a comment entry (type "comment", corrected == original) noting the truncation.`;
+    const combinedGuidance = selectionGuidance
+      ? `${boundaryGuidance}\n${selectionGuidance}`
+      : boundaryGuidance;
+    const analysisSubject = selectionGuidance ? 'snippets from a document' : 'document';
     const beforeMarker = contextBefore ? 'CHUNK CONTINUES.' : 'START OF DOCUMENT.';
     const afterMarker = contextAfter ? 'CHUNK CONTINUES.' : 'END OF DOCUMENT.';
     const beforeBlock = contextBefore
@@ -219,7 +244,7 @@ ${beforeMarker}${extraBlock}`;
         baseInstruction,
         currentDate,
         userInstructions,
-        boundaryGuidance,
+        boundaryGuidance: combinedGuidance,
         text,
         docLabel: '# Editable Chunk (Message 2/3)'
       });
@@ -227,16 +252,17 @@ ${beforeMarker}${extraBlock}`;
       message2 = buildGrammarPromptBody({
         baseInstruction,
         currentDate,
-        boundaryGuidance,
+        boundaryGuidance: combinedGuidance,
         text,
-        docLabel: 'Editable Chunk (Message 2/3):'
+        docLabel: 'Editable Chunk (Message 2/3):',
+        subjectLabel: analysisSubject
       });
     } else {
       message2 = buildStylePromptBody({
         rulePrompt: rule.prompt || '',
         baseInstruction,
         currentDate,
-        boundaryGuidance,
+        boundaryGuidance: combinedGuidance,
         text,
         docLabel: 'Editable Chunk (Message 2/3):',
         allowGrammar: !!rule.allowGrammar
@@ -254,6 +280,100 @@ ${afterMarker}`;
     ];
   }
 
+  function generateSelectionPromptMessages({
+    text,
+    rule,
+    contextBefore = '',
+    contextAfter = '',
+    includeFullDocument = false,
+    fullDocumentText = ''
+  }) {
+    const languageInstruction = languageInstructionText();
+    const formatInstruction = formatInstructionText();
+    const baseInstruction = `${languageInstruction}${formatInstruction}`;
+    const currentDate = new Date();
+    const totalMessages = includeFullDocument ? 4 : 3;
+    const boundaryLines = [
+      'Selection context note:',
+      `- Messages 1/${totalMessages} and 3/${totalMessages} are read-only context; only edit the text in Message 2/${totalMessages}.`,
+      '- These are snippets from a larger document; snippets may start or end mid-word or mid-sentence.',
+      `- Use the before/after context to interpret meaning, but propose corrections only for text inside Message 2/${totalMessages}.`,
+      '- Do not complete or infer missing letters/words at snippet boundaries.',
+      `- Every "original" must appear exactly in Message 2/${totalMessages}; do not trim or edit context-only text.`
+    ];
+    if (includeFullDocument) {
+      boundaryLines.push(`- Message 4/${totalMessages} is the full document (read-only).`);
+      boundaryLines.push(`- Use the full document only for consistency checks; do not propose edits outside Message 2/${totalMessages}.`);
+    }
+    boundaryLines.push(`- Do not edit text outside Message 2/${totalMessages}.`);
+    const boundaryGuidance = boundaryLines.join('\n');
+    const analysisSubject = 'snippets from a document';
+
+    const beforeBlock = contextBefore
+      ? `\`\`\`\n${contextBefore}\n\`\`\``
+      : '(no preceding context)';
+    const afterBlock = contextAfter
+      ? `\`\`\`\n${contextAfter}\n\`\`\``
+      : '(no following context)';
+    const fullDocBlock = fullDocumentText
+      ? `\`\`\`\n${fullDocumentText}\n\`\`\``
+      : '(empty document)';
+
+    const message1 = `Message 1/${totalMessages}: Context BEFORE (read-only).
+${beforeBlock}`;
+
+    let message2 = '';
+    if (rule.isCustom) {
+      const userInstructions = rule.prompt || '';
+      message2 = buildCustomPromptBody({
+        baseInstruction,
+        currentDate,
+        userInstructions,
+        boundaryGuidance,
+        text,
+        docLabel: `# Selected Text (Message 2/${totalMessages})`
+      });
+    } else if (rule.type === 'grammar') {
+      message2 = buildGrammarPromptBody({
+        baseInstruction,
+        currentDate,
+        boundaryGuidance,
+        text,
+        docLabel: `Selected text (Message 2/${totalMessages}):`,
+        subjectLabel: analysisSubject
+      });
+    } else {
+      message2 = buildStylePromptBody({
+        rulePrompt: rule.prompt || '',
+        baseInstruction,
+        currentDate,
+        boundaryGuidance,
+        text,
+        docLabel: `Selected text (Message 2/${totalMessages}):`,
+        allowGrammar: !!rule.allowGrammar
+      });
+    }
+
+    const message3 = `Message 3/${totalMessages}: Context AFTER (read-only).
+${afterBlock}`;
+
+    const messages = [
+      { role: 'user', content: message1 },
+      { role: 'user', content: message2 },
+      { role: 'user', content: message3 }
+    ];
+
+    if (includeFullDocument) {
+      messages.push({
+        role: 'user',
+        content: `Message 4/${totalMessages}: Full document (read-only).
+${fullDocBlock}`
+      });
+    }
+
+    return messages;
+  }
+
   function generateSimplificationPrompt(text, context) {
     const languageInstruction = languageInstructionText();
     const formatInstruction = formatInstructionText();
@@ -265,9 +385,10 @@ ${afterMarker}`;
 2. Moderately Shorter: Do the same as in step 1, but reduce length by about 30% while maintaining all key information
 3. Much Shorter: Do the same as in step 2, but reduce length by 50-60%, keeping only essential information
 
-IMPORTANT: Never change mathematical notation, technical terminology, formulas, or proper nouns. Only simplify the language structure and non-technical vocabulary. Do not use markdown in your response. IMPORTANT: The output MUST be a valid JSON object. All backslashes \\ in the text, such as in LaTeX commands like \\cite, must be escaped with a second backslash (e.g., \\\\cite).
+IMPORTANT: Never change mathematical notation, technical terminology, formulas, or proper nouns. Only simplify the language structure and non-technical vocabulary. Do not use markdown in your response.
+${JSON_STRICTNESS_LINE}
 
-Return as JSON:
+Return ONLY a JSON object:
 {
   "same_length": "simplified text here",
   "moderate": "shorter simplified text here",
@@ -292,9 +413,10 @@ ${context}
 - Missing steps or assumptions
 - Incorrect applications of theorems or definitions
 - Unclear or ambiguous statements
-Be sure to go through the precise assumptions, the precise conclusions, and the logical steps between them, checking every step for accuracy. If you believe there is an error or omission, be as precise as possible, and write all mathematics in LaTeX. Do not use markdown as a bold. IMPORTANT: The output MUST be a valid JSON object. All backslashes \\ in the text, such as in LaTeX commands like \\cite, must be escaped with a second backslash (e.g., \\\\cite).
+Be sure to go through the precise assumptions, the precise conclusions, and the logical steps between them, checking every step for accuracy. If you believe there is an error or omission, be as precise as possible, and write all mathematics in LaTeX. Do not use markdown as a bold.
+${JSON_STRICTNESS_LINE}
 
-Return a JSON object:
+Return ONLY a JSON object:
 {
   "is_valid": true/false,
   "issues": ["List of specific problems found"],
@@ -322,6 +444,7 @@ ${fullDocument}
   "comment": "summary of your advice or rewrite suggestions for the selected text",
   "suggestions": ["bullet 1", "bullet 2"] // provide an array (can be empty)
 }
+${JSON_STRICTNESS_LINE}
 Instruction from user: "${instruction}"
 Important: Do not propose changes outside the selected text. Keep the context in mind but only comment on the selected text span.
 
@@ -425,6 +548,7 @@ ${contextBlock}
     buildJsonSchema,
     generatePrompt,
     generateChunkPromptMessages,
+    generateSelectionPromptMessages,
     generateSimplificationPrompt,
     generateProofCheckPrompt,
     generateCustomAskPrompt

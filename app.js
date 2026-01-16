@@ -4632,33 +4632,43 @@ async function handleAnalysis() {
   const provider = modelConfig.provider || 'openai';
   const familyKey = modelConfig.family || resolveFamilySelection();
   const selectionTargets = [];
+  const multiSelectionCount = Array.isArray(selectionSnapshot.multiSelections)
+    ? selectionSnapshot.multiSelections.length
+    : 0;
+  const useMultiSelectionCombined = multiSelectionCount > 1;
+  const hasSingleSelection = !useMultiSelectionCombined
+    && ((selectionSnapshot.range && selectionSnapshot.range.start !== selectionSnapshot.range.end)
+      || multiSelectionCount === 1);
 
-  if (selectionSnapshot.multiSelections && selectionSnapshot.multiSelections.length) {
-    selectionSnapshot.multiSelections.forEach((sel) => {
-      const start = sel.start;
-      const end = sel.end;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
-      const text = (typeof sel.text === 'string' && sel.text.length)
-        ? sel.text
+  if (hasSingleSelection) {
+    if (selectionSnapshot.range && selectionSnapshot.range.start !== selectionSnapshot.range.end) {
+      const start = selectionSnapshot.range.start;
+      const end = selectionSnapshot.range.end;
+      const text = typeof selectionSnapshot.text === 'string'
+        ? selectionSnapshot.text
         : currentText.substring(start, end);
       selectionTargets.push({ start, end, text });
-    });
-  } else if (selectionSnapshot.range && selectionSnapshot.range.start !== selectionSnapshot.range.end) {
-    const start = selectionSnapshot.range.start;
-    const end = selectionSnapshot.range.end;
-    const text = typeof selectionSnapshot.text === 'string'
-      ? selectionSnapshot.text
-      : currentText.substring(start, end);
-    selectionTargets.push({ start, end, text });
+    } else if (multiSelectionCount === 1) {
+      const sel = selectionSnapshot.multiSelections[0];
+      if (sel && Number.isFinite(sel.start) && Number.isFinite(sel.end) && sel.end > sel.start) {
+        const text = (typeof sel.text === 'string' && sel.text.length)
+          ? sel.text
+          : currentText.substring(sel.start, sel.end);
+        selectionTargets.push({ start: sel.start, end: sel.end, text });
+      }
+    }
   }
 
   selectionTargets.sort((a, b) => a.start - b.start);
   const useSelectionTargets = selectionTargets.length > 0;
-  const includeFullDocument = useSelectionTargets ? await promptSelectionContextMode() : false;
+  const includeFullDocument = (useSelectionTargets || useMultiSelectionCombined)
+    ? await promptSelectionContextMode()
+    : false;
 
   let selectionOffset = 0;
   let analysisText = currentText;
   let contextText = '';
+  let selectionMap = [];
   let chunks = [];
   let parallelism = 1;
   let effectiveChunkSize = maxChunkSize;
@@ -4667,13 +4677,65 @@ async function handleAnalysis() {
   let confirmReason = allowSupportingFiles ? '' : 'provider';
   let forceSingleChunk = false;
 
-  if (!useSelectionTargets) {
+  if (useMultiSelectionCombined) {
+    let combinedText = '';
+    let currentPos = 0;
+    const orderedSelections = selectionSnapshot.multiSelections
+      .slice()
+      .filter(sel => sel && Number.isFinite(sel.start) && Number.isFinite(sel.end) && sel.end > sel.start)
+      .sort((a, b) => a.start - b.start);
+    const contextParts = [];
+    const contextHeader = [
+      'Selection context notes:',
+      '- Each [SELECTION_i] block is editable; propose corrections only inside those blocks.',
+      '- Each [CONTEXT_i] block is read-only context for meaning.'
+    ];
+    if (includeFullDocument) {
+      contextHeader.push('- [FULL_DOCUMENT] is read-only and for consistency checks only.');
+    }
+
+    orderedSelections.forEach((sel, idx) => {
+      const text = (typeof sel.text === 'string' && sel.text.length)
+        ? sel.text
+        : currentText.substring(sel.start, sel.end);
+      const marker = `[SELECTION_${idx + 1}]\n`;
+      combinedText += marker;
+      combinedText += text;
+      combinedText += `\n[/SELECTION_${idx + 1}]\n\n`;
+
+      const boundaryInfo = getSelectionBoundaryInfo(currentText, sel.start, sel.end);
+      selectionMap.push({
+        analysisStart: currentPos + marker.length,
+        analysisEnd: currentPos + marker.length + text.length,
+        docStart: sel.start,
+        docEnd: sel.end,
+        selectionIndex: idx,
+        leftMid: boundaryInfo.leftMid,
+        rightMid: boundaryInfo.rightMid
+      });
+
+      currentPos = combinedText.length;
+
+      const ctxStart = Math.max(0, sel.start - SELECTION_CONTEXT_CHARS);
+      const ctxEnd = Math.min(currentText.length, sel.end + SELECTION_CONTEXT_CHARS);
+      contextParts.push(`[CONTEXT_${idx + 1}]\n${currentText.substring(ctxStart, ctxEnd)}\n[/CONTEXT_${idx + 1}]`);
+    });
+
+    analysisText = combinedText;
+    contextText = `${contextHeader.join('\n')}\n\n${contextParts.join('\n\n')}`;
+    if (includeFullDocument) {
+      contextText += `\n\n[FULL_DOCUMENT]\n${currentText}\n[/FULL_DOCUMENT]`;
+    }
+    selectionOffset = 0;
+  } else if (!useSelectionTargets) {
     // Use the full document (including preamble) for full-doc analysis
     const latex = extractLatexContent(currentText);
     analysisText = latex.text;
     selectionOffset = latex.offset || 0;
     contextText = '';
+  }
 
+  if (!useSelectionTargets) {
     const requestedParallel = normalizeParallelCalls(maxParallelCalls);
     const parallelEligible = provider === 'openai' && familyKey !== 'gpt5_pro';
     autoChunkingActive = autoChunkingEnabled && parallelEligible && requestedParallel > 1;
@@ -4739,6 +4801,18 @@ async function handleAnalysis() {
         : `Context: local (+/-${SELECTION_CONTEXT_CHARS})`;
       const summary = getCurrentSettingsSummary(modelConfig);
       loadingSettings.textContent = [summary, selectionLabel, contextLabel].filter(Boolean).join(' • ');
+    } else if (useMultiSelectionCombined) {
+      const selectionLabel = `Selections: ${multiSelectionCount} (combined)`;
+      const contextLabel = includeFullDocument
+        ? 'Context: local + full document'
+        : `Context: local (+/-${SELECTION_CONTEXT_CHARS})`;
+      const summary = getCurrentSettingsSummaryWithOptions(modelConfig, {
+        parallelism,
+        chunkCount: chunks.length,
+        chunkSize: effectiveChunkSize,
+        autoChunking: autoChunkingActive
+      });
+      loadingSettings.textContent = [summary, selectionLabel, contextLabel].filter(Boolean).join(' • ');
     } else {
       loadingSettings.textContent = getCurrentSettingsSummaryWithOptions(modelConfig, {
         parallelism,
@@ -4760,7 +4834,7 @@ async function handleAnalysis() {
     const modelLabel = MODEL_FAMILIES[modelConfig.family]?.label || modelConfig.model;
     if (loadingWarning) {
       if (!allowSupportingFiles && supportingFiles.length) {
-        if (useSelectionTargets) {
+        if (confirmReason === 'provider') {
           loadingWarning.textContent = 'Supporting files skipped because the selected provider does not support attachments.';
         } else if (confirmReason === 'chunking+parallel') {
           loadingWarning.textContent = 'Supporting files skipped because chunking and parallel processing are active. Disable parallel calls or increase chunk size to include them.';
@@ -4778,11 +4852,14 @@ async function handleAnalysis() {
     if (useSelectionTargets) {
       const label = selectionTargets.length > 1 ? 'selections' : 'selection';
       loadingText.textContent = `Analyzing ${label} with ${selectedRule.name} (${modelLabel})...`;
+    } else if (useMultiSelectionCombined) {
+      const label = multiSelectionCount === 1 ? 'selection' : 'selections';
+      loadingText.textContent = `Analyzing ${multiSelectionCount} ${label} with ${selectedRule.name} (${modelLabel})...`;
     } else {
       loadingText.textContent = `Analyzing with ${selectedRule.name} (${modelLabel})...`;
     }
     
-    const mappedCorrections = [];
+    let mappedCorrections = [];
     const unmatchedCorrections = [];
     const failedChunks = [];
     const failedSelections = [];
@@ -4814,11 +4891,17 @@ async function handleAnalysis() {
             signal: runController.signal
           });
           if (Array.isArray(results)) {
-            const { mapped, unmatched } = mapCorrectionsToPositions(
+            let { mapped, unmatched } = mapCorrectionsToPositions(
               results,
               target.text,
               target.start
             );
+            const selectionInfo = getSelectionBoundaryInfo(currentText, target.start, target.end);
+            const boundaryFiltered = filterBoundaryCorrectionsForSelections(mapped, [selectionInfo]);
+            if (boundaryFiltered.dropped.length) {
+              console.warn('Dropped boundary corrections (selection):', boundaryFiltered.dropped.slice(0, 3));
+            }
+            mapped = boundaryFiltered.kept;
             if (mapped.length) {
               mappedCorrections.push(...mapped);
             }
@@ -4955,6 +5038,21 @@ async function handleAnalysis() {
           }
         });
       }
+    }
+
+    if (useMultiSelectionCombined && selectionMap.length > 0) {
+      const remapped = mapCorrectionsFromMultiSelection(mappedCorrections, selectionMap, currentText);
+      const selectionInfos = selectionMap.map((sel) => ({
+        start: sel.docStart,
+        end: sel.docEnd,
+        leftMid: sel.leftMid,
+        rightMid: sel.rightMid
+      }));
+      const boundaryFiltered = filterBoundaryCorrectionsForSelections(remapped.mapped, selectionInfos);
+      if (boundaryFiltered.dropped.length) {
+        console.warn('Dropped boundary corrections (multi-selection):', boundaryFiltered.dropped.slice(0, 3));
+      }
+      mappedCorrections = boundaryFiltered.kept;
     }
 
     mappedCorrections.sort((a, b) => a.position.start - b.position.start);
@@ -5692,11 +5790,136 @@ function downloadDeepAuditReport() {
   URL.revokeObjectURL(url);
 }
 
+function looksLikeCorrectionItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  const hasOriginal = typeof item.original === 'string' && item.original.trim();
+  if (!hasOriginal) return false;
+  const hasCorrected = typeof item.corrected === 'string'
+    || typeof item.suggestion === 'string'
+    || typeof item.suggested === 'string'
+    || typeof item.replacement === 'string';
+  const hasExplanation = typeof item.explanation === 'string'
+    || typeof item.reason === 'string'
+    || typeof item.note === 'string';
+  return hasCorrected || hasExplanation || typeof item.type === 'string';
+}
+
+function isCorrectionsArray(value) {
+  if (!Array.isArray(value)) return false;
+  return value.some(looksLikeCorrectionItem);
+}
+
+function parseJsonMaybe(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    return null;
+  }
+}
+
+function extractCorrectionsFromPayload(payload, depth = 0) {
+  if (depth > 6 || payload == null) return null;
+  if (isCorrectionsArray(payload)) return payload;
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const found = extractCorrectionsFromPayload(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (typeof payload === 'string') {
+    const parsed = parseJsonMaybe(payload);
+    if (parsed) return extractCorrectionsFromPayload(parsed, depth + 1);
+    return null;
+  }
+
+  if (typeof payload !== 'object') return null;
+
+  if (Array.isArray(payload.corrections)) return payload.corrections;
+
+  const candidates = [
+    payload.responseParsed,
+    payload.response,
+    payload.result,
+    payload.data,
+    payload.json,
+    payload.output_json
+  ];
+  for (const candidate of candidates) {
+    const found = extractCorrectionsFromPayload(candidate, depth + 1);
+    if (found) return found;
+  }
+
+  if (payload.responseRaw && typeof payload.responseRaw === 'string') {
+    const parsedRaw = parseJsonMaybe(payload.responseRaw);
+    if (parsedRaw) {
+      const found = extractCorrectionsFromPayload(parsedRaw, depth + 1);
+      if (found) return found;
+    }
+  }
+
+  if (payload.output || payload.output_text || payload.candidates) {
+    try {
+      const extracted = extractStructuredJson(payload);
+      const found = extractCorrectionsFromPayload(extracted, depth + 1);
+      if (found) return found;
+    } catch (err) {
+      // ignore and fall through
+    }
+  }
+
+  return null;
+}
+
+function normalizeImportedCorrections(correctionsArray) {
+  if (!Array.isArray(correctionsArray)) return [];
+  return correctionsArray.map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    const original = typeof item.original === 'string' ? item.original : '';
+    if (!original.trim()) return null;
+
+    let corrected = typeof item.corrected === 'string' ? item.corrected : '';
+    if (!corrected) {
+      const fallback = [
+        item.suggestion,
+        item.suggested,
+        item.replacement,
+        item.fix,
+        item.revised
+      ].find(value => typeof value === 'string' && value.length);
+      if (fallback) corrected = fallback;
+    }
+
+    const type = typeof item.type === 'string' ? item.type : '';
+    if (!corrected && type === 'comment') {
+      corrected = original;
+    }
+    if (!corrected) return null;
+
+    let explanation = typeof item.explanation === 'string' ? item.explanation : '';
+    if (!explanation) {
+      const fallback = [item.reason, item.note].find(value => typeof value === 'string' && value.length);
+      if (fallback) explanation = fallback;
+    }
+
+    const normalized = { ...item };
+    if (!normalized.original) normalized.original = original;
+    if (!normalized.corrected) normalized.corrected = corrected;
+    if (!normalized.explanation && explanation) normalized.explanation = explanation;
+    return normalized;
+  }).filter(Boolean);
+}
+
 // Handle pasted JSON corrections (manual import)
 function handleJsonImport() {
   const raw = (jsonInput && jsonInput.value || '').trim();
   if (!raw) {
-    alert('Please paste JSON corrections. If this import fails, try Unstructured Comments, or regenerate JSON in two steps: table (original, comment, correction) then JSON.');
+    alert('Please paste JSON corrections or a full model response. If this import fails, try Unstructured Comments, or regenerate JSON in two steps: table (original, comment, correction) then JSON.');
     return;
   }
 
@@ -5734,23 +5957,13 @@ function handleJsonImport() {
     }
   }
 
-  let correctionsArray = Array.isArray(parsed?.corrections) ? parsed.corrections : null;
-  if (!correctionsArray) {
-    try {
-      // Try to unwrap a full API response (e.g., OpenAI/Gemini Responses API payload)
-      const extracted = extractStructuredJson(parsed);
-      if (Array.isArray(extracted?.corrections)) {
-        correctionsArray = extracted.corrections;
-      } else if (Array.isArray(extracted)) {
-        correctionsArray = extracted;
-      }
-    } catch (_) {
-      // ignore and fall through to error
-    }
+  let correctionsArray = extractCorrectionsFromPayload(parsed);
+  if (Array.isArray(correctionsArray)) {
+    correctionsArray = normalizeImportedCorrections(correctionsArray);
   }
 
-  if (!Array.isArray(correctionsArray)) {
-    alert('JSON must contain a "corrections" array. If this import fails, try Unstructured Comments, or regenerate JSON via a two-step prompt: first a table (original, comment, correction), then convert the table to the JSON shape.');
+  if (!Array.isArray(correctionsArray) || correctionsArray.length === 0) {
+    alert('JSON must contain a "corrections" array (or a full response with embedded corrections). If this import fails, try Unstructured Comments, or regenerate JSON via a two-step prompt: first a table (original, comment, correction), then convert the table to the JSON shape.');
     return;
   }
 
@@ -6242,6 +6455,102 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
   mapped.sort((a, b) => a.position.start - b.position.start);
 
   return { mapped, unmatched };
+}
+
+function mapCorrectionsFromMultiSelection(correctionsArray, selectionMap, documentText) {
+  const mapped = [];
+
+  for (const corr of correctionsArray) {
+    const safe = normalizeCorrectionFields(corr);
+    if (!safe || !safe.original.length) {
+      continue;
+    }
+
+    let foundMapping = null;
+    for (const mapping of selectionMap) {
+      const corrStart = corr.position ? corr.position.start : 0;
+      const corrEnd = corr.position ? corr.position.end : 0;
+      if (corrStart >= mapping.analysisStart && corrEnd <= mapping.analysisEnd) {
+        foundMapping = mapping;
+        break;
+      }
+    }
+
+    if (foundMapping) {
+      const corrStart = corr.position ? corr.position.start : 0;
+      const offsetInSelection = corrStart - foundMapping.analysisStart;
+      const docStart = foundMapping.docStart + offsetInSelection;
+      const docEnd = docStart + safe.original.length;
+      const expectedText = documentText.substring(docStart, docEnd);
+      if (expectedText === safe.original || expectedText.trim() === safe.original.trim()) {
+        mapped.push({
+          ...safe,
+          original: expectedText,
+          position: {
+            start: docStart,
+            end: docEnd
+          },
+          selectionIndex: foundMapping.selectionIndex
+        });
+      } else {
+        console.warn(`Text mismatch for correction in multi-selection: expected "${safe.original}", found "${expectedText}"`);
+      }
+    }
+  }
+
+  mapped.sort((a, b) => a.position.start - b.position.start);
+  return { mapped, unmatched: [] };
+}
+
+function isWordChar(char) {
+  return typeof char === 'string' && /[A-Za-z0-9]/.test(char);
+}
+
+function getSelectionBoundaryInfo(text, start, end) {
+  const leftMid = start > 0 && isWordChar(text[start - 1]) && isWordChar(text[start]);
+  const rightMid = end < text.length && isWordChar(text[end - 1]) && isWordChar(text[end]);
+  return { start, end, leftMid, rightMid };
+}
+
+function shouldDropBoundaryCorrection(corr, selectionInfo) {
+  if (!corr || !selectionInfo) return false;
+  if (!selectionInfo.leftMid && !selectionInfo.rightMid) return false;
+  const pos = corr.position;
+  if (!pos) return false;
+  const changesText = corr.corrected !== corr.original;
+  if (!changesText) return false;
+  if (selectionInfo.leftMid && pos.start === selectionInfo.start) return true;
+  if (selectionInfo.rightMid && pos.end === selectionInfo.end) return true;
+  return false;
+}
+
+function filterBoundaryCorrectionsForSelections(correctionsArray, selectionInfos) {
+  if (!Array.isArray(correctionsArray) || !Array.isArray(selectionInfos)) {
+    return { kept: Array.isArray(correctionsArray) ? correctionsArray : [], dropped: [] };
+  }
+  const kept = [];
+  const dropped = [];
+
+  correctionsArray.forEach((corr) => {
+    const pos = corr && corr.position;
+    if (!pos) {
+      kept.push(corr);
+      return;
+    }
+    const indexed = Number.isFinite(corr.selectionIndex) ? selectionInfos[corr.selectionIndex] : null;
+    const selectionInfo = indexed || selectionInfos.find(sel => pos.start >= sel.start && pos.end <= sel.end);
+    if (!selectionInfo) {
+      kept.push(corr);
+      return;
+    }
+    if (shouldDropBoundaryCorrection(corr, selectionInfo)) {
+      dropped.push(corr);
+    } else {
+      kept.push(corr);
+    }
+  });
+
+  return { kept, dropped };
 }
 
 // Stable mapping: tries exact first, then fuzzy, without assuming model order
