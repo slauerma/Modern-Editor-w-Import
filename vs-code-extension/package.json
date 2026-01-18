@@ -1,0 +1,46 @@
+{
+  "name": "modern-editor-vscode",
+  "displayName": "Modern Editor",
+  "description": "Modern Editor webview for VS Code (private/local).",
+  "version": "0.1.0",
+  "publisher": "modern-editor",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:modernEditor.open",
+    "onCommand:modernEditor.showLogs"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "modernEditor.open",
+        "title": "Modern Editor: Open"
+      },
+      {
+        "command": "modernEditor.showLogs",
+        "title": "Modern Editor: Show Logs"
+      }
+    ],
+    "configuration": {
+      "title": "Modern Editor",
+      "properties": {
+        "modernEditor.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose logging for the Modern Editor extension."
+        },
+        "modernEditor.retainContextWhenHidden": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the Modern Editor webview running when hidden (prevents clearing the document when switching tabs; uses more memory)."
+        }
+      }
+    }
+  }
+}
