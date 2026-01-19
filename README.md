@@ -34,10 +34,11 @@ Warning: This code contains many insecure elements (see below). Do not use it wi
 - Format: selector for LaTeX (default), Markdown, or plain text to steer prompt handling.
 - Style: built-in rules (e.g., academic style) plus custom instructions (scope/aggressiveness).  
 - Selection tools: Simplify (3 brevity levels), Proof check (beta), Custom Ask on selected text.  
-- LaTeX handling: full runs include the preamble so the model sees package/context; LaTeX commands/math are preserved. Selections send surrounding text as read-only context.  
+- LaTeX handling: full runs include the preamble so the model sees package/context; LaTeX commands/math are preserved. Selections send surrounding text as read-only context; you can optionally include the full document as an extra read-only context message.  
 - Chunking/parallelism: set max chunk size; optionally run multiple chunks in parallel (OpenAI only, Gemini/Pro stay single-threaded).  
 - Supporting files: attach PDFs/images/text as read-only context; plain text (markdown/latex) is preferred because PDFs are slower and more expensive. Large PDFs/images show a warning in the list. Attachments are skipped when chunking is active, so increase chunk size to include them (a warning appears in the loading overlay and console). Runs with supporting files show a confirmation listing files, sizes, and model settings, plus a brief toast after you continue.  
 - Models/tools: GPT-5.2 (thinking), GPT-5.2-pro, GPT-4.1-mini. OpenAI/GPT-5.2 is the primary path by design; Gemini/Pro are supported where practical. GPT-5.2 can optionally enable web search and Python (default off). GPT-5.2-pro runs in single-step function-call output mode, so tools are disabled to preserve structured output reliability (Pro does not support `json_schema`). Token/cost info is shown in the menu’s run log (and also logged to the console).  
+- Request timeout: optional menu setting to cap long runs; Off by default.
 - Import/offline: Structured JSON corrections; Unstructured Comments → structured corrections; built-in Example to demo without API calls.  
 - Diff/session: baseline tracking; Global Diff modal + download; autosave/session restore with backup + doc-only fallback; manual save/load `.json`; optional “Save checkpoint (local)”/restore for a browser-stored snapshot. Session snapshots include model/language/format/chunk size/parallel calls and tool toggles.
 - Models: OpenAI (GPT-5.2 families, GPT-5.2-pro, GPT-4.1-mini) and Gemini (3 Flash preview, 2.5 Flash/Pro) share the same JSON schemas; tools (web/code) are OpenAI-only and disabled for GPT-5.2-pro.
@@ -85,3 +86,8 @@ Warning: This code contains many insecure elements (see below). Do not use it wi
 - Run history (if enabled) persists prompts/responses in IndexedDB on this browser profile.
 - Supporting file metadata is stored locally; attachments are sent to model providers as prompt context.
 - No CSP or sandboxing is enforced when running as a plain HTML file.
+
+---
+
+## License
+ModernEditor is released under the MIT License. See `LICENSE` for the full text; the VS Code extension ships with the same license.

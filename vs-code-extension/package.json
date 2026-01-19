@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "modern-editor",
   "private": true,
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
