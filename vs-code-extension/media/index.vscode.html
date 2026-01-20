@@ -28,6 +28,8 @@
   --bg-color: #fffff8;
   --text-color: #1a1a1a;
   --border-color: #d4d4d4;
+  --sidebar-width: 220px;
+  --sidebar-gap: 24px;
   --highlight-inactive: rgba(255, 229, 153, 0.7); /* Soft Yellow */
   --highlight-active: rgba(255, 204, 203, 1);
   --suggestion-red: #d14;
@@ -63,7 +65,7 @@ body {
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
-  width: auto;
+  width: var(--sidebar-width);
 }
 
 .hamburger-btn,
@@ -429,7 +431,7 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2rem;
-  padding-left: 140px; /* Space for the sidebar + buttons */
+  padding-left: calc(var(--sidebar-width) + var(--sidebar-gap)); /* Space for the sidebar + a gutter */
   padding-bottom: 220px; /* Leave room for the fixed popover at the bottom */
   position: relative;
 }
@@ -437,11 +439,12 @@ body {
 /* Responsive: ensure content doesn't overlap on narrow viewports */
 @media (max-width: 600px) {
   .main-content {
-    padding-left: 110px;
+    padding-left: 190px;
   }
   
   .header {
     padding: 8px;
+    width: 170px;
   }
   
   .hamburger-btn,
@@ -1718,6 +1721,7 @@ body {
       <span class="latex-build-label">Save &amp; Compile</span>
     </button>
   </div>
+  <button class="model-summary-btn load-vscode-btn" id="vscodeLoadQuickBtn" type="button" aria-label="Load active .tex from VS Code">Load from VS Code</button>
   <button class="model-summary-btn" id="modelSummaryBtn" type="button" aria-label="Open menu">Model</button>
 
   <!-- Wrapper for analysis buttons to add the line above -->
@@ -2228,29 +2232,35 @@ body {
   <div class="summary-section">
     <h3>Basics for first timers</h3>
     <ul>
-      <li>Open the <code>vs-code/</code> folder in VS Code, press F5 to start the Extension Development Host, then run “Modern Editor: Open” in that host’s Command Palette.</li>
-      <li>Open the Modern Editor panel and click “Load from VS Code” to pull the active file (selection and version included).</li>
-      <li>Edit in the webview, then use “Save &amp; Compile” to push changes and run LaTeX Workshop build/view (applies at the loaded version/selection when available; we try to preserve focus).</li>
+      <li>Install the extension (VSIX or Dev run below), then open a LaTeX file in VS Code so Modern Editor knows what to load/build.</li>
+      <li>Run “Modern Editor: Open” from the Command Palette to launch the panel.</li>
+      <li>Click “Load from VS Code” (sidebar button, also in File menu) to pull the active <code>.tex</code> file, including selection and version.</li>
+      <li>Edit, then use “Save &amp; Compile” to push changes and run LaTeX Workshop build/view; requires the LaTeX Workshop extension.</li>
       <li>During Save &amp; Compile and SyncTeX, VS Code may briefly focus the LaTeX/PDF tab; return to Modern Editor afterward. Alt/Option+click forward-syncs; Cmd/Ctrl+click reverse-sync stays in the PDF viewer.</li>
       <li>Use the hamburger menu for apply/load, sessions, and supporting files.</li>
     </ul>
   </div>
   <div class="summary-section">
-    <h3>Modern Editor (VS Code)</h3>
-    <p>Private/local VS Code extension that hosts Modern Editor in a webview.</p>
+    <h3>Install</h3>
+    <h4>VSIX</h4>
+    <ol>
+      <li>Install the packaged VSIX via Extensions → “Install from VSIX…” (or <code>code --install-extension modern-editor-vscode-0.1.0.vsix</code>).</li>
+      <li>Run <strong>Modern Editor: Open</strong> from the Command Palette.</li>
+    </ol>
     <h4>Dev run</h4>
     <ol>
-      <li>Open <code>vs-code/</code> in VS Code.</li>
-      <li>Run <strong>Modern Editor: Open</strong> (Extension Development Host).</li>
+      <li>Open the <code>vs-code/</code> folder in VS Code.</li>
+      <li>Press F5 to start the Extension Development Host, then run <strong>Modern Editor: Open</strong> in that host.</li>
     </ol>
     <h4>Notes</h4>
     <ul>
+      <li>Keep a <code>.tex</code> file open; “Load from VS Code” uses the active editor.</li>
+      <li>LaTeX Workshop is required for “Save &amp; Compile” (<code>latex-workshop.build</code> then <code>latex-workshop.view</code>).</li>
       <li>All extension assets live under <code>vs-code/</code>.</li>
       <li>Webview assets are under <code>vs-code/media/</code>.</li>
       <li>Logging goes to the “Modern Editor” Output channel.</li>
       <li>Supporting file uploads are not yet supported in the VS Code extension.</li>
-      <li>Use the hamburger menu to “Load from VS Code” / “Apply to VS Code”.</li>
-      <li>LaTeX Workshop integration: “Save &amp; Compile” runs <code>latex-workshop.build</code> then <code>latex-workshop.view</code>.</li>
+      <li>Use the sidebar “Load from VS Code” button, or the File menu, to pull/apply documents.</li>
     </ul>
   </div>
 </div>

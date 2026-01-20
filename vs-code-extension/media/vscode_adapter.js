@@ -340,6 +340,8 @@
   window.addEventListener('DOMContentLoaded', () => {
     const loadBtn = document.getElementById('vscodeLoadBtn');
     if (loadBtn) loadBtn.addEventListener('click', () => loadFromVsCode({ force: true }));
+    const loadQuickBtn = document.getElementById('vscodeLoadQuickBtn');
+    if (loadQuickBtn) loadQuickBtn.addEventListener('click', () => loadFromVsCode({ force: true }));
 
     const applyBtn = document.getElementById('vscodeApplyBtn');
     if (applyBtn) applyBtn.addEventListener('click', applyToVsCode);

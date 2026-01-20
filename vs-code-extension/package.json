@@ -6,6 +6,10 @@
   "publisher": "modern-editor",
   "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slauerma/Modern-Editor-w-Import.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

@@ -2354,7 +2354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   const hasVsCodeBackend = typeof window.__ME_BACKEND__ === 'object';
   if (hasVsCodeBackend && documentInput) {
-    documentInput.placeholder = 'Click “Load from VS Code” (menu) or use PDF to pull the active editor.';
+    documentInput.placeholder = 'Open a .tex file, then click “Load from VS Code” (sidebar) to load it; Save & Compile updates the PDF via LaTeX Workshop.';
   }
   const restored = restoreSessionFromStorage();
   if (!restored) {
