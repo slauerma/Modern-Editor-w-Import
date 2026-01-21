@@ -2354,7 +2354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   const hasVsCodeBackend = typeof window.__ME_BACKEND__ === 'object';
   if (hasVsCodeBackend && documentInput) {
-    documentInput.placeholder = 'Open a .tex file, then click “Load from VS Code” (sidebar) to load it; Save & Compile updates the PDF via LaTeX Workshop.';
+    documentInput.placeholder = 'Open a .tex file, then click “Load from VS Code” (sidebar) to load it.\nSave & Compile updates the PDF via LaTeX Workshop.\nCaution: overwrites the current LaTeX file in focus.';
   }
   const restored = restoreSessionFromStorage();
   if (!restored) {
@@ -6387,6 +6387,7 @@ function navigateCorrections(direction) {
 function updateNavigation() {
     const correctionControls = document.getElementById('correctionControls');
     const noSuggestionsBadge = document.getElementById('noSuggestionsBadge');
+    const sidebar = document.querySelector('.header');
     
     // Handle Correction Navigation
     if (corrections.length > 0 && currentIndex > -1) {
@@ -6398,6 +6399,7 @@ function updateNavigation() {
         if (noSuggestionsBadge) noSuggestionsBadge.style.display = 'none';
         const noSuggestionsActions = document.getElementById('noSuggestionsActions');
         if (noSuggestionsActions) noSuggestionsActions.style.display = 'none';
+        if (sidebar) sidebar.classList.add('correction-mode');
     } else {
         correctionControls.style.display = 'flex';
         navInfo.style.display = 'none';
@@ -6412,6 +6414,7 @@ function updateNavigation() {
           const canDiff = originalDocumentText && (documentInput.value || '') !== originalDocumentText;
           noSuggestionsActions.style.display = canDiff ? 'flex' : 'none';
         }
+        if (sidebar) sidebar.classList.remove('correction-mode');
     }
 
     // Handle Selection Actions

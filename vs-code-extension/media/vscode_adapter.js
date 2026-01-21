@@ -63,6 +63,41 @@
     };
   }
 
+  function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer || []);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      let chunkString = '';
+      for (let j = 0; j < chunk.length; j++) {
+        chunkString += String.fromCharCode(chunk[j]);
+      }
+      binary += chunkString;
+    }
+    return btoa(binary);
+  }
+
+  async function serializeFormData(formData) {
+    const fields = {};
+    const files = [];
+    for (const [key, value] of formData.entries()) {
+      if (typeof value === 'string') {
+        fields[key] = value;
+        continue;
+      }
+      if (!value || typeof value.arrayBuffer !== 'function') continue;
+      const dataBase64 = arrayBufferToBase64(await value.arrayBuffer());
+      files.push({
+        fieldName: key,
+        filename: typeof value.name === 'string' && value.name ? value.name : 'file',
+        contentType: typeof value.type === 'string' && value.type ? value.type : 'application/octet-stream',
+        dataBase64
+      });
+    }
+    return { fields, files };
+  }
+
   function makeAbortError() {
     const err = new Error('The operation was aborted.');
     err.name = 'AbortError';
@@ -75,15 +110,25 @@
         return originalFetchWithTimeout(url, options, timeoutMs, timeoutState);
       }
 
-      const body = options.body;
-      if (body && typeof body !== 'string') {
-        return Promise.reject(new Error('Supporting file uploads are not supported in the VS Code extension yet.'));
-      }
+      const buildSafeOptions = async () => {
+        const safeOptions = {
+          method: options.method || 'GET',
+          headers: normalizeHeaders(options.headers)
+        };
 
-      const safeOptions = {
-        method: options.method || 'GET',
-        headers: normalizeHeaders(options.headers),
-        body
+        const body = options.body;
+        if (typeof body === 'undefined' || body === null) {
+          return safeOptions;
+        }
+        if (typeof body === 'string') {
+          safeOptions.body = body;
+          return safeOptions;
+        }
+        if (body instanceof FormData) {
+          safeOptions.multipart = await serializeFormData(body);
+          return safeOptions;
+        }
+        throw new Error('Unsupported request body type for the VS Code extension fetch proxy.');
       };
 
       let aborted = false;
@@ -125,19 +170,25 @@
           timeoutId = setTimeout(() => abortNow(true), timeoutMs);
         }
 
-        backend.request('http.fetch', {
-          url,
-          options: safeOptions,
-          timeoutMs
-        }).then((responsePayload) => {
-          if (aborted) {
-            return;
-          }
-          finishResolve(buildResponse(responsePayload));
+        buildSafeOptions().then((safeOptions) => {
+          if (aborted) return;
+          backend.request('http.fetch', {
+            url,
+            options: safeOptions,
+            timeoutMs
+          }).then((responsePayload) => {
+            if (aborted) {
+              return;
+            }
+            finishResolve(buildResponse(responsePayload));
+          }).catch((err) => {
+            if (aborted) {
+              return;
+            }
+            finishReject(err);
+          });
         }).catch((err) => {
-          if (aborted) {
-            return;
-          }
+          if (aborted) return;
           finishReject(err);
         });
       }).finally(() => {
@@ -215,17 +266,17 @@
     if (!input) return;
     let text = String(input.value || '');
 
-    // If the document is empty and no URI is tracked, try to pull from VS Code once.
-    if ((!text || !text.trim()) && !lastLoadedUri) {
-      const loaded = await loadFromVsCode({ silent: true });
+    // If the document is empty, try to pull from VS Code once to avoid overwriting with blank.
+    if (!text || !text.trim()) {
+      const loaded = await loadFromVsCode({ silent: true, force: true });
       if (loaded) {
         text = String(input.value || '');
       }
     }
 
-    if (!lastLoadedUri && (!text || !text.trim())) {
+    if (!text || !text.trim()) {
       alert('No document loaded. Use “Load from VS Code” first.');
-      return;
+      return false;
     }
 
     try {
@@ -251,9 +302,7 @@
     try {
       const applied = await applyToVsCode();
       if (applied === false) return;
-      const buildResult = await backend.request('latex.build');
-      if (buildResult && buildResult.ok === false) return;
-      await backend.request('latex.view');
+      await backend.request('latex.compile');
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       alert(`LaTeX Workshop failed: ${message}`);
@@ -326,15 +375,28 @@
 
   function handleSyncClick(event) {
     if (!event.altKey) return; // Alt/Option-click only to avoid clobbering editor gestures
-    if (!lastLoadedUri) return;
-    const root = document.getElementById('highlightOverlay');
-    const offset = getOffsetFromPoint(root, event.clientX, event.clientY);
-    if (offset === null || offset === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    backend.request('sync.toPdf', { uri: lastLoadedUri, offset }).catch((err) => {
-      console.warn('Sync to PDF failed:', err);
-    });
+    const trySync = async () => {
+      if (!lastLoadedUri) {
+        const loaded = await loadFromVsCode({ silent: true, force: true });
+        if (!loaded || !lastLoadedUri) return;
+      }
+
+      let offset = null;
+      const input = document.getElementById('documentInput');
+      const overlay = document.getElementById('highlightOverlay');
+      if (event.target === input && input && Number.isInteger(input.selectionStart)) {
+        offset = input.selectionStart;
+      } else if (overlay) {
+        offset = getOffsetFromPoint(overlay, event.clientX, event.clientY);
+      }
+      if (offset === null || offset === undefined) return;
+      event.preventDefault();
+      event.stopPropagation();
+      backend.request('sync.toPdf', { uri: lastLoadedUri, offset }).catch((err) => {
+        console.warn('Sync to PDF failed:', err);
+      });
+    };
+    void trySync();
   }
 
   window.addEventListener('DOMContentLoaded', () => {

@@ -40,6 +40,36 @@
           "default": false,
           "description": "Enable verbose logging for the Modern Editor extension."
         },
+        "modernEditor.compile.viewMode": {
+          "type": "string",
+          "enum": [
+            "buildOnly",
+            "viewInternal",
+            "viewExternal"
+          ],
+          "default": "viewInternal",
+          "description": "Choose how Save & Compile runs LaTeX Workshop: build only, build+view in VS Code, or build+view in an external viewer."
+        },
+        "modernEditor.compile.refocusAfterView": {
+          "type": "boolean",
+          "default": false,
+          "description": "After Save & Compile view runs, refocus the Modern Editor webview panel."
+        },
+        "modernEditor.sync.refocusAfterReverse": {
+          "type": "boolean",
+          "default": false,
+          "description": "After reverse SyncTeX (PDF -> source) triggers, refocus the Modern Editor panel."
+        },
+        "modernEditor.sync.reverseFocusBehavior": {
+          "type": "string",
+          "enum": [
+            "none",
+            "modernEditor",
+            "pdf"
+          ],
+          "default": "none",
+          "description": "After reverse SyncTeX (PDF -> source), choose focus behavior: none (stay in source), modernEditor (focus webview), or pdf (return focus to PDF)."
+        },
         "modernEditor.retainContextWhenHidden": {
           "type": "boolean",
           "default": true,

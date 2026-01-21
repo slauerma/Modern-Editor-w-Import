@@ -165,10 +165,31 @@ async function handleHttpFetch(payload, log) {
   const options = payload.options && typeof payload.options === 'object' ? payload.options : {};
   const method = options.method || 'GET';
   const headers = normalizeHeaders(options.headers);
-  const body = options.body;
   const redirect = 'error';
 
-  if (body && typeof body !== 'string') {
+  let body = undefined;
+  if (options && typeof options === 'object' && options.multipart) {
+    const multipart = options.multipart;
+    const formData = new FormData();
+    const fields = multipart.fields && typeof multipart.fields === 'object' ? multipart.fields : {};
+    Object.entries(fields).forEach(([key, value]) => {
+      if (typeof value === 'undefined' || value === null) return;
+      formData.append(key, String(value));
+    });
+    const files = Array.isArray(multipart.files) ? multipart.files : [];
+    files.forEach((file) => {
+      if (!file || !file.dataBase64 || !file.fieldName) return;
+      const bytes = Buffer.from(String(file.dataBase64), 'base64');
+      const blob = new Blob([bytes], { type: file.contentType || 'application/octet-stream' });
+      formData.append(file.fieldName, blob, file.filename || 'file');
+    });
+    delete headers['content-type'];
+    body = formData;
+  } else if (typeof options.body === 'string') {
+    body = options.body;
+  } else if (typeof options.body === 'undefined' || options.body === null) {
+    body = undefined;
+  } else {
     throw new Error('Unsupported request body type.');
   }
 
@@ -367,6 +388,55 @@ async function handleLatexView(log) {
   }
 }
 
+async function handleLatexCompile(log) {
+  const editor = await resolveEditor(log);
+  if (!editor) {
+    void vscode.window.showWarningMessage('Open a LaTeX document to compile.');
+    throw new Error('No active editor available.');
+  }
+
+  const config = vscode.workspace.getConfiguration('modernEditor');
+  const viewMode = config.get('compile.viewMode', 'viewInternal');
+  const refocus = config.get('compile.refocusAfterView', false);
+
+  const showDoc = async () => {
+    await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
+  };
+
+  try {
+    await showDoc();
+    await vscode.commands.executeCommand('latex-workshop.build');
+
+    if (viewMode === 'buildOnly') {
+      return { ok: true };
+    }
+
+    let viewCommand = 'latex-workshop.view';
+    if (viewMode === 'viewExternal') {
+      viewCommand = 'latex-workshop.viewExternal';
+    }
+
+    try {
+      await showDoc();
+      await vscode.commands.executeCommand(viewCommand);
+    } catch (err) {
+      if (viewMode === 'viewExternal' && viewCommand !== 'latex-workshop.view') {
+        await vscode.commands.executeCommand('latex-workshop.view');
+      } else {
+        throw err;
+      }
+    }
+
+    if (refocus && currentPanel) {
+      currentPanel.reveal(currentPanel.viewColumn, true);
+    }
+    return { ok: true };
+  } catch (err) {
+    void vscode.window.showErrorMessage('Could not run LaTeX Workshop commands.');
+    throw err;
+  }
+}
+
 async function handleSecretGet(payload, log, secrets) {
   const store = requireSecretStorage(secrets);
   const key = requireSecretKey(payload);
@@ -412,6 +482,8 @@ async function routeMessage(type, payload, log, secrets) {
       return handleLatexBuild(log);
     case 'latex.view':
       return handleLatexView(log);
+    case 'latex.compile':
+      return handleLatexCompile(log);
     case 'secrets.get':
       return handleSecretGet(payload, log, secrets);
     case 'secrets.set':
@@ -472,6 +544,20 @@ function activate(context) {
             character: active.character
           }
         });
+        const config = vscode.workspace.getConfiguration('modernEditor');
+        const behavior = config.get('sync.reverseFocusBehavior', 'none');
+        const legacyRefocus = config.get('sync.refocusAfterReverse', false);
+        const focusMode = behavior || 'none';
+        const shouldRefocusModernEditor = focusMode === 'modernEditor' || (focusMode === 'none' && legacyRefocus);
+        const shouldFocusPdf = focusMode === 'pdf';
+        if (shouldRefocusModernEditor && currentPanel) {
+          const column = currentPanel.viewColumn ?? editor.viewColumn ?? vscode.ViewColumn.Active;
+          currentPanel.reveal(column, false);
+        } else if (shouldFocusPdf) {
+          void vscode.commands.executeCommand('latex-workshop.view').catch((err) => {
+            logger?.warn(`Failed to refocus PDF after reverse sync: ${err?.message || String(err)}`);
+          });
+        }
       }, 75);
     };
   })();

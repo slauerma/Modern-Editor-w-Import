@@ -28,14 +28,23 @@
   --bg-color: #fffff8;
   --text-color: #1a1a1a;
   --border-color: #d4d4d4;
-  --sidebar-width: 220px;
-  --sidebar-gap: 24px;
+  --sidebar-width: 210px;
+  --sidebar-gap: 18px;
   --highlight-inactive: rgba(255, 229, 153, 0.7); /* Soft Yellow */
   --highlight-active: rgba(255, 204, 203, 1);
   --suggestion-red: #d14;
   --suggestion-green: #22863a;
   --user-highlight: rgba(100, 149, 237, 0.3); /* Soft blue for user selection */
   --rule-style: #059669;
+}
+
+code {
+  background: #f7f5eb;
+  color: #333;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
 }
 
 * {
@@ -68,6 +77,19 @@ body {
   width: var(--sidebar-width);
 }
 
+.header.correction-mode .analysis-controls,
+.header.correction-mode .model-summary-btn:not(#latexBuildViewBtn),
+.header.correction-mode .load-vscode-btn,
+.header.correction-mode .nav-btn.icon-btn,
+.header.correction-mode .model-summary-btn:not(#latexBuildViewBtn):not(#vscodeLoadQuickBtn),
+.header.correction-mode .selection-actions,
+.header.correction-mode .analysis-controls + .multi-selection-panel {
+  display: none !important;
+}
+
+.header.correction-mode .compile-actions {
+  display: block;
+}
 .hamburger-btn,
 .icon-btn,
 .nav-btn {
@@ -104,8 +126,9 @@ body {
 
 .latex-build-btn {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 400;
   font-family: var(--font-sans);
+  line-height: 1.2;
 }
 
 .latex-build-label {
@@ -439,12 +462,12 @@ body {
 /* Responsive: ensure content doesn't overlap on narrow viewports */
 @media (max-width: 600px) {
   .main-content {
-    padding-left: 190px;
+    padding-left: calc(210px + 12px);
   }
   
   .header {
     padding: 8px;
-    width: 170px;
+    width: 180px;
   }
   
   .hamburger-btn,
@@ -469,19 +492,20 @@ body {
 }
 
 .compile-actions {
-  display: flex;
-  gap: 8px;
+  display: block;
+  width: 100%;
 }
 
 .latex-build-btn {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 400;
   font-family: var(--font-sans);
-  width: auto;
-  min-width: 140px;
-  height: 40px;
-  padding: 0 12px;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 8px 10px;
   justify-content: center;
+  line-height: 1.2;
 }
 
 .menu-submenu {
@@ -1716,12 +1740,10 @@ body {
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
     </button>
   </div>
-  <div class="compile-actions">
-    <button class="nav-btn icon-btn latex-build-btn" id="latexBuildViewBtn" title="Save and compile (LaTeX Workshop build + view)" aria-label="Save and compile (LaTeX Workshop build + view)">
-      <span class="latex-build-label">Save &amp; Compile</span>
-    </button>
-  </div>
   <button class="model-summary-btn load-vscode-btn" id="vscodeLoadQuickBtn" type="button" aria-label="Load active .tex from VS Code">Load from VS Code</button>
+  <div class="compile-actions">
+    <button class="model-summary-btn" id="latexBuildViewBtn" title="Save and compile (LaTeX Workshop)" aria-label="Save and compile (LaTeX Workshop)">Save &amp; Compile</button>
+  </div>
   <button class="model-summary-btn" id="modelSummaryBtn" type="button" aria-label="Open menu">Model</button>
 
   <!-- Wrapper for analysis buttons to add the line above -->
@@ -1767,10 +1789,6 @@ body {
       <input type="text" id="customAskInput" placeholder="Custom instruction (e.g., Help me improve this part)">
       <button class="selection-btn" id="customAskBtn">Custom Ask</button>
     </div>
-  </div>
-  <div style="display:flex; flex-direction:column; gap:2px; margin-top:4px;">
-    <a class="credit-link" href="https://kevinbryanecon.com" target="_blank" rel="noopener">Built by Kevin Bryan</a>
-    <a class="credit-link" href="https://sites.google.com/site/slauerma/" target="_blank" rel="noopener" aria-label="Revised by Stephan Lauermann">Revised by Stephan Lauermann</a>
   </div>
 </div>
 
@@ -2229,6 +2247,7 @@ body {
 <div class="summary-modal" id="vsCodeHelpModal" role="dialog" aria-modal="true" aria-labelledby="vsCodeHelpTitle" tabindex="-1">
   <button class="summary-close" id="vsCodeHelpClose" aria-label="Close dialog">×</button>
   <h2 id="vsCodeHelpTitle">VS Code Help</h2>
+  <div class="shortcut-hint" style="font-weight:600;">Modern Editor v4.14</div>
   <div class="summary-section">
     <h3>Basics for first timers</h3>
     <ul>
@@ -2236,7 +2255,8 @@ body {
       <li>Run “Modern Editor: Open” from the Command Palette to launch the panel.</li>
       <li>Click “Load from VS Code” (sidebar button, also in File menu) to pull the active <code>.tex</code> file, including selection and version.</li>
       <li>Edit, then use “Save &amp; Compile” to push changes and run LaTeX Workshop build/view; requires the LaTeX Workshop extension.</li>
-      <li>During Save &amp; Compile and SyncTeX, VS Code may briefly focus the LaTeX/PDF tab; return to Modern Editor afterward. Alt/Option+click forward-syncs; Cmd/Ctrl+click reverse-sync stays in the PDF viewer.</li>
+      <li>Save &amp; Compile overwrites the loaded VS Code document (no prompt once loaded). Default focus may move to the LaTeX/PDF tab; optional refocus is available via settings.</li>
+      <li>SyncTeX: Alt/Option+click in Modern Editor to forward-sync to PDF. Reverse sync is Cmd/Ctrl+click in the PDF viewer (LaTeX Workshop); optional refocus to Modern Editor or back to the PDF is available via settings.</li>
       <li>Use the hamburger menu for apply/load, sessions, and supporting files.</li>
     </ul>
   </div>
@@ -2261,6 +2281,9 @@ body {
       <li>Logging goes to the “Modern Editor” Output channel.</li>
       <li>Supporting file uploads are not yet supported in the VS Code extension.</li>
       <li>Use the sidebar “Load from VS Code” button, or the File menu, to pull/apply documents.</li>
+      <li>Settings: <code>modernEditor.compile.viewMode</code> (build only/internal/external), <code>compile.refocusAfterView</code>, <code>sync.reverseFocusBehavior</code> (none/modernEditor/pdf; legacy <code>sync.refocusAfterReverse</code>), <code>retainContextWhenHidden</code>, <code>debugLogging</code>.</li>
+      <li>HTTP allowlist: only <code>https://api.openai.com</code> and <code>https://generativelanguage.googleapis.com</code> with string bodies; other endpoints or multipart uploads are blocked in VS Code.</li>
+      <li>External key scripts may be blocked by the VS Code webview CSP unless packaged as webview resources.</li>
     </ul>
   </div>
 </div>
