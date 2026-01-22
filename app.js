@@ -217,6 +217,22 @@ function safeRemoveStorage(key) {
   }
 }
 
+function getOpenRouterCustomModelId() {
+  const stored = safeGetStorage('openrouterCustomModelId');
+  return stored ? stored.trim() : '';
+}
+
+function setOpenRouterCustomModelId(value) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed) {
+    safeSetStorage('openrouterCustomModelId', trimmed);
+    window.OPENROUTER_CUSTOM_MODEL_ID = trimmed;
+  } else {
+    safeRemoveStorage('openrouterCustomModelId');
+    window.OPENROUTER_CUSTOM_MODEL_ID = '';
+  }
+}
+
 function getKeyStorageSeed() {
   const origin = (typeof location !== 'undefined' && location.origin && location.origin !== 'null')
     ? location.origin
@@ -277,38 +293,41 @@ function setPersistKeysEnabled(enabled) {
 
 function getPersistedKeysMeta() {
   const raw = safeGetStorage(PERSIST_KEYS_STORAGE_KEY);
-  if (!raw) return { hasAny: false, openai: false, gemini: false };
+  if (!raw) return { hasAny: false, openai: false, gemini: false, openrouter: false };
   try {
     const parsed = JSON.parse(raw);
     const openai = !!parsed.openai;
     const gemini = !!parsed.gemini;
-    return { hasAny: openai || gemini, openai, gemini };
+    const openrouter = !!parsed.openrouter;
+    return { hasAny: openai || gemini || openrouter, openai, gemini, openrouter };
   } catch (err) {
-    return { hasAny: false, openai: false, gemini: false };
+    return { hasAny: false, openai: false, gemini: false, openrouter: false };
   }
 }
 
 function loadPersistedKeys() {
-  if (!isPersistKeysEnabled()) return { openai: '', gemini: '', hasAny: false };
+  if (!isPersistKeysEnabled()) return { openai: '', gemini: '', openrouter: '', hasAny: false };
   const raw = safeGetStorage(PERSIST_KEYS_STORAGE_KEY);
-  if (!raw) return { openai: '', gemini: '', hasAny: false };
+  if (!raw) return { openai: '', gemini: '', openrouter: '', hasAny: false };
   try {
     const parsed = JSON.parse(raw);
     if (parsed.version !== PERSIST_KEYS_VERSION) {
-      return { openai: '', gemini: '', hasAny: false };
+      return { openai: '', gemini: '', openrouter: '', hasAny: false };
     }
     const openai = decodeStoredKey(parsed.openai || '');
     const gemini = decodeStoredKey(parsed.gemini || '');
-    return { openai, gemini, hasAny: !!(openai || gemini) };
+    const openrouter = decodeStoredKey(parsed.openrouter || '');
+    return { openai, gemini, openrouter, hasAny: !!(openai || gemini || openrouter) };
   } catch (err) {
-    return { openai: '', gemini: '', hasAny: false };
+    return { openai: '', gemini: '', openrouter: '', hasAny: false };
   }
 }
 
-function savePersistedKeys(openaiKey, geminiKey) {
+function savePersistedKeys(openaiKey, geminiKey, openrouterKey) {
   const openai = encodeStoredKey(openaiKey);
   const gemini = encodeStoredKey(geminiKey);
-  if (!openai && !gemini) {
+  const openrouter = encodeStoredKey(openrouterKey);
+  if (!openai && !gemini && !openrouter) {
     safeRemoveStorage(PERSIST_KEYS_STORAGE_KEY);
     return;
   }
@@ -316,6 +335,7 @@ function savePersistedKeys(openaiKey, geminiKey) {
     version: PERSIST_KEYS_VERSION,
     openai,
     gemini,
+    openrouter,
     updatedAt: Date.now()
   };
   safeSetStorage(PERSIST_KEYS_STORAGE_KEY, JSON.stringify(payload));
@@ -387,8 +407,10 @@ let requestTimeoutMs = (() => {
 })();
 const keyState = {
   openai: { source: 'none', externalPath: null },
+  openrouter: { source: 'none', externalPath: null },
   gemini: { source: 'none', externalPath: null }
 };
+let currentKeyModalProvider = '';
 const SESSION_STORAGE_KEY = 'modernEditorSession_v1';
 const SESSION_BACKUP_KEY = 'modernEditorSession_v1_backup';
 const DOC_AUTOSAVE_KEY = 'modernEditorDocAutosave_v1';
@@ -655,8 +677,11 @@ const summaryModalHeader = summaryModal ? summaryModal.querySelector('h2') : nul
 const modalOverlay = document.getElementById('modalOverlay');
 const apiKeyModal = document.getElementById('apiKeyModal');
 const apiKeyInput = document.getElementById('apiKeyInput');
+const openrouterApiKeyInput = document.getElementById('openrouterApiKeyInput');
+const openrouterCustomModelInput = document.getElementById('openrouterCustomModelInput');
 const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
 const apiKeySubmit = document.getElementById('apiKeySubmit');
+const apiKeyClose = document.getElementById('apiKeyClose');
 const apiKeySkip = document.getElementById('apiKeySkip');
 const apiKeyClearStored = document.getElementById('apiKeyClearStored');
 const apiKeySourcesNote = document.getElementById('apiKeySourcesNote');
@@ -678,6 +703,7 @@ const loadingWarning = document.getElementById('loadingWarning');
 const apiStatusManageBtn = document.getElementById('apiStatusManageBtn');
 const tryExampleBtn = document.getElementById('tryExampleBtn');
 const openaiKeyInfoText = document.getElementById('openaiKeyInfoText');
+const openrouterKeyInfoText = document.getElementById('openrouterKeyInfoText');
 const geminiKeyInfoText = document.getElementById('geminiKeyInfoText');
 const aboutModal = document.getElementById('aboutModal');
 const aboutClose = document.getElementById('aboutClose');
@@ -723,7 +749,6 @@ const selectionContextLocalBtn = document.getElementById('selectionContextLocalB
 const selectionContextFullBtn = document.getElementById('selectionContextFullBtn');
 const supportingToast = document.getElementById('supportingToast');
 const selectionActions = document.getElementById('selectionActions');
-const multiSelectionNote = document.getElementById('multiSelectionNote');
 const multiSelectionPanel = document.getElementById('multiSelectionPanel');
 const simplifyBtn = document.getElementById('simplifyBtn');
 const proofBtn = document.getElementById('proofBtn');
@@ -1063,8 +1088,15 @@ function getShortReasoningLabel(label) {
 function getModelSummaryLabel() {
   const familyKey = resolveFamilySelection();
   const family = MODEL_FAMILIES[familyKey] || {};
+  const provider = family.provider || 'openai';
   const rawLabel = family.label || family.model || 'Model';
   let modelLabel = rawLabel.replace(/\([^)]*\)/g, '').replace(/Expensive!?/gi, '').trim();
+  if (provider === 'openrouter') {
+    const customModelId = getOpenRouterCustomModelId();
+    if (customModelId) {
+      modelLabel = customModelId;
+    }
+  }
   modelLabel = modelLabel.replace(/-/g, ' ');
   modelLabel = modelLabel.replace(/\s+/g, ' ').trim();
   modelLabel = modelLabel.replace(/\bpro\b/gi, 'Pro').replace(/\bmini\b/gi, 'Mini');
@@ -1083,7 +1115,9 @@ function updateModelSummaryButton() {
   if (!modelSummaryBtn) return;
   const familyKey = resolveFamilySelection();
   const family = MODEL_FAMILIES[familyKey] || {};
-  const modelLabel = family.label || family.model || 'Model';
+  const provider = family.provider || 'openai';
+  const customModelId = provider === 'openrouter' ? getOpenRouterCustomModelId() : '';
+  const modelLabel = customModelId || family.label || family.model || 'Model';
   let reasoningLabel = '';
   if (reasoningSelect && reasoningSelect.options && reasoningSelect.selectedIndex >= 0) {
     reasoningLabel = reasoningSelect.options[reasoningSelect.selectedIndex]?.text || '';
@@ -1101,6 +1135,7 @@ function getSelectedProvider() {
 }
 
 function isKeyMissingFor(provider) {
+  if (provider === 'openrouter') return !window.OPENROUTER_API_KEY;
   if (provider === 'gemini') return !window.GEMINI_API_KEY;
   return !window.OPENAI_API_KEY;
 }
@@ -1108,10 +1143,13 @@ function isKeyMissingFor(provider) {
 function promptForProviderKey(provider) {
   if (loadingOverlay) loadingOverlay.style.display = 'none';
   if (!apiKeyModal) return;
+  currentKeyModalProvider = provider || '';
   updatePersistKeysUI();
   apiKeyModal.style.display = 'block';
   if (provider === 'gemini') {
     if (geminiApiKeyInput) geminiApiKeyInput.focus();
+  } else if (provider === 'openrouter') {
+    if (openrouterApiKeyInput) openrouterApiKeyInput.focus();
   } else {
     if (apiKeyInput) apiKeyInput.focus();
   }
@@ -1120,10 +1158,21 @@ function promptForProviderKey(provider) {
 function openApiKeyModal() {
   if (!apiKeyModal) return;
   if (apiKeyInput) apiKeyInput.value = window.OPENAI_API_KEY || '';
+  if (openrouterApiKeyInput) openrouterApiKeyInput.value = window.OPENROUTER_API_KEY || '';
+  if (openrouterCustomModelInput) openrouterCustomModelInput.value = getOpenRouterCustomModelId();
   if (geminiApiKeyInput) geminiApiKeyInput.value = window.GEMINI_API_KEY || '';
+  currentKeyModalProvider = '';
   updatePersistKeysUI();
   apiKeyModal.style.display = 'block';
   if (apiKeyInput) apiKeyInput.focus();
+}
+
+function closeApiKeyModal() {
+  if (apiKeyModal) apiKeyModal.style.display = 'none';
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+  stopLoadingTips();
+  if (loadingOverlay) loadingOverlay.style.background = 'rgba(255, 255, 248, 0.9)';
+  if (loadingText) loadingText.style.display = 'block';
 }
 
 function showApiKeyPromptIfMissing(error, providerOverride = '') {
@@ -1131,7 +1180,13 @@ function showApiKeyPromptIfMissing(error, providerOverride = '') {
   if (!message.includes('api key is missing')) return;
 
   const provider = providerOverride
-    || (message.includes('gemini') ? 'gemini' : message.includes('openai') ? 'openai' : getSelectedProvider());
+    || (message.includes('gemini')
+      ? 'gemini'
+      : message.includes('openrouter')
+        ? 'openrouter'
+        : message.includes('openai')
+          ? 'openai'
+          : getSelectedProvider());
 
   if (!isKeyMissingFor(provider)) return;
   promptForProviderKey(provider);
@@ -1814,6 +1869,7 @@ const MODEL_FAMILY_ORDER = [
   'gpt5_thinking',
   'gpt5_pro',
   'gpt4_1_mini',
+  'openrouter_default',
   'gemini_3_flash',
   'gemini_3_pro',
   'gemini_2_5_flash'
@@ -1868,6 +1924,24 @@ const MODEL_FAMILIES = {
       defaultOption: 'standard',
       options: {
         standard: { label: 'Default' }
+      }
+    }
+  },
+  openrouter_default: {
+    provider: 'openrouter',
+    model: null,
+    label: 'OpenRouter (account default)',
+    supportsFunctionCalling: false,
+    supportsStructuredOutputs: true,
+    supportsTools: false,
+    reasoning: {
+      defaultOption: 'medium',
+      options: {
+        none: { label: 'None', reasoningEffort: 'none' },
+        low: { label: 'Low', reasoningEffort: 'low' },
+        medium: { label: 'Medium', reasoningEffort: 'medium' },
+        high: { label: 'High', reasoningEffort: 'high' },
+        xhigh: { label: 'XHigh', reasoningEffort: 'xhigh' }
       }
     }
   },
@@ -2208,10 +2282,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (apiStatusBar) {
     apiStatusBar.addEventListener('click', () => {
-      if (apiKeyInput) apiKeyInput.value = window.OPENAI_API_KEY || '';
-      if (geminiApiKeyInput) geminiApiKeyInput.value = window.GEMINI_API_KEY || '';
-      apiKeyModal.style.display = 'block';
+      openApiKeyModal();
     });
+  }
+  if (apiKeyClose) {
+    apiKeyClose.addEventListener('click', closeApiKeyModal);
   }
   if (tryExampleBtn) {
     tryExampleBtn.addEventListener('click', (event) => {
@@ -2869,9 +2944,52 @@ async function loadExternalGeminiKeyScripts() {
   return attempts.some(a => a.status === 'loaded' && window.GEMINI_API_KEY);
 }
 
+async function loadExternalOpenRouterKeyScripts() {
+  const sources = Array.isArray(window.OPENROUTER_KEY_PATHS) ? window.OPENROUTER_KEY_PATHS : [];
+  const safeSources = sources.filter(isTrustedKeySource);
+  const attempts = [];
+
+  for (const src of safeSources) {
+    if (!src) continue;
+    const loaded = await new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = false;
+      script.defer = false;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    attempts.push({ src, status: loaded ? 'loaded' : 'failed' });
+    if (loaded && window.OPENROUTER_API_KEY) {
+      keyState.openrouter.source = 'external-path';
+      keyState.openrouter.externalPath = src;
+      break;
+    }
+  }
+
+  if (sources.length && !safeSources.length) {
+    console.warn('Skipped OpenRouter key sources because none passed validation.');
+  }
+  if (attempts.length) {
+    const summary = attempts.map(a => `${a.src}: ${a.status}`).join('; ');
+    console.log(`OpenRouter external key sources attempted: ${summary}`);
+    if (apiKeySourcesNote) {
+      const existing = apiKeySourcesNote.textContent || '';
+      const spacer = existing ? ' ' : '';
+      apiKeySourcesNote.textContent = `${existing}${spacer}OpenRouter sources: ${summary}`;
+    }
+  }
+
+  return attempts.some(a => a.status === 'loaded' && window.OPENROUTER_API_KEY);
+}
+
 async function checkApiKey() {
   if (typeof window.OPENAI_API_KEY === 'undefined') {
     window.OPENAI_API_KEY = '';
+  }
+  if (typeof window.OPENROUTER_API_KEY === 'undefined') {
+    window.OPENROUTER_API_KEY = '';
   }
   if (typeof window.GEMINI_API_KEY === 'undefined') {
     window.GEMINI_API_KEY = '';
@@ -2881,6 +2999,10 @@ async function checkApiKey() {
   if (!window.OPENAI_API_KEY && persisted.openai) {
     window.OPENAI_API_KEY = persisted.openai;
     keyState.openai.source = 'local-storage';
+  }
+  if (!window.OPENROUTER_API_KEY && persisted.openrouter) {
+    window.OPENROUTER_API_KEY = persisted.openrouter;
+    keyState.openrouter.source = 'local-storage';
   }
   if (!window.GEMINI_API_KEY && persisted.gemini) {
     window.GEMINI_API_KEY = persisted.gemini;
@@ -2894,6 +3016,12 @@ async function checkApiKey() {
       keyState.openai.externalPath = null;
     }
   }
+  if (!window.OPENROUTER_API_KEY) {
+    const loadedOpenRouter = await loadExternalOpenRouterKeyScripts();
+    if (!loadedOpenRouter) {
+      keyState.openrouter.externalPath = null;
+    }
+  }
   if (!window.GEMINI_API_KEY) {
     const loadedGemini = await loadExternalGeminiKeyScripts();
     if (!loadedGemini) {
@@ -2904,15 +3032,18 @@ async function checkApiKey() {
   if (window.OPENAI_API_KEY && keyState.openai.source === 'none') {
     keyState.openai.source = keyState.openai.externalPath ? 'external-path' : 'preloaded';
   }
+  if (window.OPENROUTER_API_KEY && keyState.openrouter.source === 'none') {
+    keyState.openrouter.source = keyState.openrouter.externalPath ? 'external-path' : 'preloaded';
+  }
   if (window.GEMINI_API_KEY && keyState.gemini.source === 'none') {
     keyState.gemini.source = keyState.gemini.externalPath ? 'external-path' : 'preloaded';
   }
 
   if (apiKeySourcesNote) {
-    if (window.OPENAI_API_KEY || window.GEMINI_API_KEY) {
-      apiKeySourcesNote.textContent = apiKeySourcesNote.textContent || 'API key loaded.';
-    } else {
+    if (!window.OPENAI_API_KEY && !window.OPENROUTER_API_KEY && !window.GEMINI_API_KEY) {
       apiKeySourcesNote.textContent = apiKeySourcesNote.textContent || 'No API key loaded yet.';
+    } else {
+      apiKeySourcesNote.textContent = apiKeySourcesNote.textContent || '';
     }
   }
 
@@ -2923,13 +3054,20 @@ async function checkApiKey() {
 
 function saveApiKey() {
   const openaiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+  const openrouterKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
   const geminiKey = geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '';
+  const openrouterCustomModel = openrouterCustomModelInput ? openrouterCustomModelInput.value.trim() : '';
   const persistEnabled = persistKeysToggle ? persistKeysToggle.checked : isPersistKeysEnabled();
 
   if (typeof openaiKey === 'string') {
     window.OPENAI_API_KEY = openaiKey;
     keyState.openai.source = openaiKey ? 'modal' : 'none';
   }
+  if (typeof openrouterKey === 'string') {
+    window.OPENROUTER_API_KEY = openrouterKey;
+    keyState.openrouter.source = openrouterKey ? 'modal' : 'none';
+  }
+  setOpenRouterCustomModelId(openrouterCustomModel);
   if (typeof geminiKey === 'string') {
     window.GEMINI_API_KEY = geminiKey;
     keyState.gemini.source = geminiKey ? 'modal' : 'none';
@@ -2937,7 +3075,7 @@ function saveApiKey() {
 
   setPersistKeysEnabled(persistEnabled);
   if (persistEnabled) {
-    savePersistedKeys(openaiKey, geminiKey);
+    savePersistedKeys(openaiKey, geminiKey, openrouterKey);
   } else {
     clearPersistedKeys();
   }
@@ -2954,13 +3092,22 @@ function saveApiKey() {
 }
 
 function skipApiKey() {
-  window.OPENAI_API_KEY = '';
-  keyState.openai.source = 'none';
-  apiKeyModal.style.display = 'none';
-  loadingOverlay.style.display = 'none';
-  stopLoadingTips();
-  loadingOverlay.style.background = 'rgba(255, 255, 248, 0.9)';
-  loadingText.style.display = 'block';
+  const provider = currentKeyModalProvider || getSelectedProvider();
+  if (provider === 'gemini') {
+    window.GEMINI_API_KEY = '';
+    keyState.gemini.source = 'none';
+    if (geminiApiKeyInput) geminiApiKeyInput.value = '';
+  } else if (provider === 'openrouter') {
+    window.OPENROUTER_API_KEY = '';
+    keyState.openrouter.source = 'none';
+    if (openrouterApiKeyInput) openrouterApiKeyInput.value = '';
+  } else {
+    window.OPENAI_API_KEY = '';
+    keyState.openai.source = 'none';
+    if (apiKeyInput) apiKeyInput.value = '';
+  }
+  currentKeyModalProvider = '';
+  closeApiKeyModal();
 
   updateApiStatusUI();
   updateApiKeyInfoUI();
@@ -2979,6 +3126,9 @@ function updateApiKeyInfoUI() {
   if (openaiKeyInfoText) {
     openaiKeyInfoText.textContent = `OpenAI: ${describeKey(keyState.openai.source, !!window.OPENAI_API_KEY)}`;
   }
+  if (openrouterKeyInfoText) {
+    openrouterKeyInfoText.textContent = `OpenRouter: ${describeKey(keyState.openrouter.source, !!window.OPENROUTER_API_KEY)}`;
+  }
   if (geminiKeyInfoText) {
     geminiKeyInfoText.textContent = `Gemini: ${describeKey(keyState.gemini.source, !!window.GEMINI_API_KEY)}`;
   }
@@ -2990,7 +3140,9 @@ function updateApiStatusUI() {
   const familyKey = resolveFamilySelection();
   const familyCfg = MODEL_FAMILIES[familyKey] || MODEL_FAMILIES[MODEL_FAMILY_ORDER[0]];
   const provider = familyCfg.provider || 'openai';
-  const modelLabel = familyCfg.label || familyCfg.model || familyKey;
+  const customOpenRouterModel = provider === 'openrouter' ? getOpenRouterCustomModelId() : '';
+  const modelLabelBase = familyCfg.label || familyCfg.model || familyKey;
+  const modelLabel = customOpenRouterModel ? `${modelLabelBase} [${customOpenRouterModel}]` : modelLabelBase;
   const reasoningKey = resolveReasoningSelection(familyKey);
   const reasoningLabel = familyCfg.reasoning?.options?.[reasoningKey]?.label;
 
@@ -3017,6 +3169,16 @@ function updateApiStatusUI() {
       : src === 'preloaded' ? 'preloaded'
       : 'none';
     status = `Model: ${modelLabel}${reasoningLabel ? ` [${reasoningLabel}]` : ''} (Gemini). Key: ${hasKey ? 'present' : 'missing'}${hasKey ? ` [${srcLabel}]` : ''}`;
+  } else if (provider === 'openrouter') {
+    const hasKey = !!window.OPENROUTER_API_KEY;
+    const src = keyState.openrouter.source;
+    ok = hasKey;
+    const srcLabel = src === 'modal' ? 'direct'
+      : src === 'local-storage' ? 'local'
+      : src === 'external-path' ? 'path'
+      : src === 'preloaded' ? 'preloaded'
+      : 'none';
+    status = `Model: ${modelLabel}${reasoningLabel ? ` [${reasoningLabel}]` : ''} (OpenRouter). Key: ${hasKey ? 'present' : 'missing'}${hasKey ? ` [${srcLabel}]` : ''}`;
   } else {
     status = `Model: ${modelLabel}. Provider: ${provider}.`;
     ok = true;
@@ -3028,7 +3190,7 @@ function updateApiStatusUI() {
   apiStatusBar.style.display = ok ? 'none' : 'flex';
 
   if (tryExampleBtn) {
-    const noKeysAtAll = !window.OPENAI_API_KEY && !window.GEMINI_API_KEY;
+    const noKeysAtAll = !window.OPENAI_API_KEY && !window.OPENROUTER_API_KEY && !window.GEMINI_API_KEY;
     const showExample = noKeysAtAll && !hasMeaningfulContent();
     tryExampleBtn.style.display = showExample ? 'inline-flex' : 'none';
   }
@@ -3053,7 +3215,7 @@ function closeWelcomeModal() {
 function shouldShowWelcomeModal() {
   const seen = safeGetStorage(WELCOME_SEEN_KEY) === '1';
   if (seen) return false;
-  const noKeysAtAll = !window.OPENAI_API_KEY && !window.GEMINI_API_KEY;
+  const noKeysAtAll = !window.OPENAI_API_KEY && !window.OPENROUTER_API_KEY && !window.GEMINI_API_KEY;
   if (!noKeysAtAll) return false;
   if (hasMeaningfulContent()) return false;
   return true;
@@ -3261,9 +3423,6 @@ function clearAllSelections(options = {}) {
 }
 
 function updateMultiSelectionUI() {
-    if (multiSelectionNote) {
-        multiSelectionNote.style.display = multiSelectionMode ? 'block' : 'none';
-    }
     if (!multiSelectionPanel) return;
     if (!multiSelections.length) {
         multiSelectionPanel.style.display = 'none';
@@ -3339,7 +3498,13 @@ function getToolSupportForFamily(familyKey) {
 function isParallelSupportedForFamily(familyKey) {
   const familyConfig = MODEL_FAMILIES[familyKey] || {};
   const provider = familyConfig.provider || 'openai';
-  return provider === 'openai' && familyKey !== 'gpt5_pro';
+  if (provider === 'openai') {
+    return familyKey !== 'gpt5_pro';
+  }
+  if (provider === 'openrouter') {
+    return true;
+  }
+  return false;
 }
 
 function getEffectiveParallelCalls(familyKey) {
@@ -3511,7 +3676,7 @@ function getModelForType(type) {
   const selectedFamily = MODEL_FAMILIES[family] || MODEL_FAMILIES[MODEL_FAMILY_ORDER[0]];
   const reasoningKey = resolveReasoningSelection(family);
   const reasoningCfg = selectedFamily.reasoning?.options?.[reasoningKey];
-  const model = selectedFamily.model;
+  let model = selectedFamily.model;
   const provider = selectedFamily.provider || 'openai';
   let generationConfig = (selectedFamily.generationConfig && typeof selectedFamily.generationConfig === 'object')
     ? { ...selectedFamily.generationConfig }
@@ -3538,6 +3703,13 @@ function getModelForType(type) {
     }
   } else if (reasoningCfg?.reasoningEffort) {
     reasoningEffort = reasoningCfg.reasoningEffort;
+  }
+
+  if (provider === 'openrouter') {
+    const customModelId = getOpenRouterCustomModelId();
+    if (customModelId) {
+      model = customModelId;
+    }
   }
 
   return { model, provider, reasoningEffort, family, generationConfig, systemInstruction };
@@ -4037,6 +4209,24 @@ function buildSupportingInput(prompt, options = {}) {
 
   if (Array.isArray(prompt)) {
     const supportingMessage = { role: 'user', content };
+    const hasNumberedMessages = prompt.some((message) => {
+      if (!message) return false;
+      const content = message.content;
+      if (typeof content === 'string') {
+        return /Message\s+\d+\/\d+:/i.test(content);
+      }
+      if (Array.isArray(content)) {
+        return content.some((part) => typeof part?.text === 'string' && /Message\s+\d+\/\d+:/i.test(part.text));
+      }
+      return false;
+    });
+    if (hasNumberedMessages) {
+      return {
+        input: [...prompt, supportingMessage],
+        used: true,
+        skippedReason: ''
+      };
+    }
     const firstNonSystem = prompt.findIndex((message) => message && message.role !== 'system');
     const insertAt = firstNonSystem === -1 ? prompt.length : firstNonSystem;
     return {
@@ -4141,18 +4331,77 @@ function buildTimeoutError(timeoutMs) {
   return error;
 }
 
+function getOpenRouterAttributionHeaders() {
+  const headers = {};
+  const refOverride = (typeof window.OPENROUTER_HTTP_REFERER === 'string')
+    ? window.OPENROUTER_HTTP_REFERER.trim()
+    : '';
+  const titleOverride = (typeof window.OPENROUTER_X_TITLE === 'string')
+    ? window.OPENROUTER_X_TITLE.trim()
+    : '';
+  const origin = (typeof location !== 'undefined' && location.origin && /^https?:/i.test(location.origin))
+    ? location.origin
+    : '';
+  if (refOverride) {
+    headers['HTTP-Referer'] = refOverride;
+  } else if (origin) {
+    headers['HTTP-Referer'] = origin;
+  }
+  if (titleOverride) {
+    headers['X-Title'] = titleOverride;
+  } else if (origin) {
+    headers['X-Title'] = 'Modern Editor';
+  }
+  return headers;
+}
+
 async function callModelAPI(prompt, modelConfig, responseType, retryCount = 0, options = {}) {
   const provider = modelConfig?.provider || 'openai';
   if (provider === 'gemini') {
     return callGeminiAPI(prompt, modelConfig, responseType, retryCount, options);
   }
-  return callOpenAIAPI(prompt, modelConfig, responseType, retryCount, options);
+  if (provider === 'openrouter') {
+    return callOpenRouterAPI(prompt, modelConfig, responseType, retryCount, options);
+  }
+  if (provider === 'openai') {
+    return callOpenAIAPI(prompt, modelConfig, responseType, retryCount, options);
+  }
+  throw new Error(`Unknown provider: ${provider}`);
 }
 
 async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, options = {}) {
-  const key = window.OPENAI_API_KEY || '';
+  return callResponsesAPI({
+    provider: 'openai',
+    baseUrl: 'https://api.openai.com/v1/responses',
+    apiKey: window.OPENAI_API_KEY || '',
+    extraHeaders: { 'OpenAI-Beta': 'responses=v1' },
+    omitEmptyModel: false
+  }, prompt, modelConfig, responseType, retryCount, options);
+}
+
+async function callOpenRouterAPI(prompt, modelConfig, responseType, retryCount = 0, options = {}) {
+  return callResponsesAPI({
+    provider: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1/responses',
+    apiKey: window.OPENROUTER_API_KEY || '',
+    extraHeaders: getOpenRouterAttributionHeaders(),
+    omitEmptyModel: true
+  }, prompt, modelConfig, responseType, retryCount, options);
+}
+
+async function callResponsesAPI(providerConfig, prompt, modelConfig, responseType, retryCount = 0, options = {}) {
+  const {
+    provider = 'openai',
+    baseUrl,
+    apiKey,
+    extraHeaders = {},
+    omitEmptyModel = false
+  } = providerConfig || {};
+
+  const key = apiKey || '';
   if (!key) {
-    throw new Error('API key is missing. Please ensure it is defined.');
+    const label = provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
+    throw new Error(`${label} API key is missing. Please ensure it is defined.`);
   }
 
   const { model, reasoningEffort } = modelConfig || {};
@@ -4161,18 +4410,25 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
   const startTime = performance.now();
   const startIso = new Date().toISOString();
   const promptForLog = typeof prompt === 'string' ? prompt : JSON.stringify(prompt, null, 2);
-  console.log(`Run start: model ${model} (${modelConfig.family || 'n/a'}), type ${responseType}, ${startIso}`);
+  console.log(`Run start: [${provider}] model ${model || '(default)'} (${modelConfig.family || 'n/a'}), type ${responseType}, ${startIso}`);
 
   const schemaDef = expectJson ? buildJsonSchema(responseType) : null;
   const schema = schemaDef && (schemaDef.schema || schemaDef);
   const familyConfig = (modelConfig && MODEL_FAMILIES[modelConfig.family]) || {};
   const supportsStructuredOutputs = familyConfig.supportsStructuredOutputs !== false;
 
-  const supportingResult = buildSupportingInput(prompt, options);
+  const allowSupportingFiles = provider === 'openai' ? options.allowSupportingFiles !== false : false;
+  const supportingResult = buildSupportingInput(prompt, {
+    ...options,
+    allowSupportingFiles,
+    skipReason: allowSupportingFiles ? options.skipReason : (options.skipReason || 'provider')
+  });
   const payload = {
-    model,
     input: supportingResult.input
   };
+  if (model || !omitEmptyModel) {
+    payload.model = model;
+  }
 
   if (!supportingResult.used && supportingFiles.length && supportingResult.skippedReason) {
     if (supportingResult.skippedReason === 'parallel') {
@@ -4183,6 +4439,8 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
       console.warn('Supporting files skipped because chunking is active. Increase chunk size to include them.');
     } else if (supportingResult.skippedReason === 'not-ready') {
       console.warn('Supporting files were not ready and were skipped. Use Prepare in the Supporting Files modal.');
+    } else if (supportingResult.skippedReason === 'provider') {
+      console.warn('Supporting files are only sent when using OpenAI in this editor.');
     }
   }
 
@@ -4213,7 +4471,6 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
     }
   }
 
-  // Only attach reasoning when it is explicitly set
   if (reasoningEffort !== null && reasoningEffort !== undefined) {
     payload.reasoning = { effort: reasoningEffort };
   }
@@ -4221,15 +4478,13 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${key}`,
-    // Beta header required for the Responses API + structured outputs
-    'OpenAI-Beta': 'responses=v1'
+    ...extraHeaders
   };
 
   const externalSignal = options.signal || null;
   let controller = null;
   let signal = externalSignal;
   if (!signal) {
-    // Setup abort controller to support user cancellation
     if (currentAbortController) {
       try { currentAbortController.abort(); } catch (_) {}
     }
@@ -4244,42 +4499,42 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
   const timeoutState = { timedOut: false };
 
   try {
-    const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
+    const response = await fetchWithTimeout(baseUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
       signal
     }, timeoutMs, timeoutState);
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
 
-        if (response.status === 429 && retryCount < MAX_RETRY_ATTEMPTS - 1) {
-          const attempt = retryCount + 2;
-          const delayMs = getRetryDelayMs(retryCount, response.headers.get('Retry-After'));
-          const delaySec = Math.max(0.1, delayMs / 1000).toFixed(1);
-          setRetryLoadingWarning(`Rate limited, retrying (attempt ${attempt}/${MAX_RETRY_ATTEMPTS}) in ${delaySec}s...`);
-          await sleepWithAbort(delayMs, signal);
-          return callOpenAIAPI(prompt, modelConfig, responseType, retryCount + 1, options);
-        }
-
-        const message = error.error?.message || error.message || `API Error: ${response.status}`;
-        clearRetryLoadingWarning();
-        throw new Error(message);
+      if (response.status === 429 && retryCount < MAX_RETRY_ATTEMPTS - 1) {
+        const attempt = retryCount + 2;
+        const delayMs = getRetryDelayMs(retryCount, response.headers.get('Retry-After'));
+        const delaySec = Math.max(0.1, delayMs / 1000).toFixed(1);
+        setRetryLoadingWarning(`Rate limited, retrying (attempt ${attempt}/${MAX_RETRY_ATTEMPTS}) in ${delaySec}s...`);
+        await sleepWithAbort(delayMs, signal);
+        return callResponsesAPI(providerConfig, prompt, modelConfig, responseType, retryCount + 1, options);
       }
 
-      const data = await response.json();
+      const message = error.error?.message || error.message || `API Error: ${response.status}`;
       clearRetryLoadingWarning();
+      throw new Error(message);
+    }
 
-      const durationMs = performance.now() - startTime;
-      const durationSec = durationMs / 1000;
+    const data = await response.json();
+    clearRetryLoadingWarning();
 
-      if (data.usage) {
-        const inputTokens = data.usage.input_tokens || 0;
-        const outputTokens = data.usage.output_tokens || 0;
-        const totalTokens = data.usage.total_tokens || (inputTokens + outputTokens);
+    const durationMs = performance.now() - startTime;
+    const durationSec = durationMs / 1000;
 
-        // Optional cost estimate if pricing is configured
+    if (data.usage) {
+      const inputTokens = data.usage.input_tokens || 0;
+      const outputTokens = data.usage.output_tokens || 0;
+      const totalTokens = data.usage.total_tokens || (inputTokens + outputTokens);
+
+      if (provider === 'openai') {
         const pricingTable = window.OPENAI_PRICING || DEFAULT_PRICING;
         const price = pricingTable[model] || null;
         if (price && (price.input || price.output)) {
@@ -4288,56 +4543,57 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
           totalCost = inputCost + outputCost;
           costInfo = ` | Est. cost: ~$${totalCost.toFixed(4)} (input ~$${inputCost.toFixed(4)}, output ~$${outputCost.toFixed(4)})`;
         }
-
-        console.log(
-          `%cOpenAI Usage%c Model: ${model} (${modelConfig.family || 'n/a'})\nInput Tokens: %c${inputTokens}%c\nOutput Tokens: %c${outputTokens}%c\nTotal Tokens: %c${totalTokens}%c\nDuration: %c${durationSec.toFixed(2)} s%c${costInfo}`,
-          'font-weight: bold; color: #1a1a1a; background-color: #cce5ff; padding: 2px 6px; border-radius: 3px;',
-          '',
-          'color: blue;',
-          '',
-          'color: green;',
-          '',
-          'color: purple; font-weight: bold;',
-          '',
-          'color: brown;',
-          ''
-        );
-
-        addRunLogEntry({
-          start: startIso,
-          duration_ms: Math.round(durationMs),
-          duration_s: parseFloat(durationSec.toFixed(2)),
-          model,
-          family: modelConfig.family || 'n/a',
-          provider: 'openai',
-          type: responseType,
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          total_tokens: totalTokens,
-          cost: costInfo,
-          total_cost_usd: totalCost
-        });
       }
 
-      const parsed = expectJson ? extractStructuredJson(data) : extractTextOutput(data);
-      pushLastRun({
-        prompt: promptForLog,
-        model,
-        provider: 'openai',
-        responseType,
+      console.log(
+        `%c${provider === 'openai' ? 'OpenAI' : provider === 'openrouter' ? 'OpenRouter' : provider} Usage%c Model: ${model || '(default)'} (${modelConfig.family || 'n/a'})\nInput Tokens: %c${inputTokens}%c\nOutput Tokens: %c${outputTokens}%c\nTotal Tokens: %c${totalTokens}%c\nDuration: %c${durationSec.toFixed(2)} s%c${costInfo}`,
+        'font-weight: bold; color: #1a1a1a; background-color: #cce5ff; padding: 2px 6px; border-radius: 3px;',
+        '',
+        'color: blue;',
+        '',
+        'color: green;',
+        '',
+        'color: purple; font-weight: bold;',
+        '',
+        'color: brown;',
+        ''
+      );
+
+      addRunLogEntry({
         start: startIso,
         duration_ms: Math.round(durationMs),
         duration_s: parseFloat(durationSec.toFixed(2)),
-        usage: {
-          input_tokens: data?.usage?.input_tokens || 0,
-          output_tokens: data?.usage?.output_tokens || 0,
-          total_tokens: data?.usage?.total_tokens || ((data?.usage?.input_tokens || 0) + (data?.usage?.output_tokens || 0)),
-          total_cost_usd: (typeof totalCost === 'number') ? totalCost : null
-        },
-        responseRaw: JSON.stringify(data, null, 2),
-        responseParsed: parsed
+        model: model || '',
+        family: modelConfig.family || 'n/a',
+        provider,
+        type: responseType,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+        cost: costInfo,
+        total_cost_usd: totalCost
       });
-      return parsed;
+    }
+
+    const parsed = expectJson ? extractStructuredJson(data) : extractTextOutput(data);
+    pushLastRun({
+      prompt: promptForLog,
+      model: model || '',
+      provider,
+      responseType,
+      start: startIso,
+      duration_ms: Math.round(durationMs),
+      duration_s: parseFloat(durationSec.toFixed(2)),
+      usage: {
+        input_tokens: data?.usage?.input_tokens || 0,
+        output_tokens: data?.usage?.output_tokens || 0,
+        total_tokens: data?.usage?.total_tokens || ((data?.usage?.input_tokens || 0) + (data?.usage?.output_tokens || 0)),
+        total_cost_usd: (typeof totalCost === 'number') ? totalCost : null
+      },
+      responseRaw: JSON.stringify(data, null, 2),
+      responseParsed: parsed
+    });
+    return parsed;
   } catch (error) {
     if (error && error.name === 'AbortError' && timeoutState.timedOut) {
       throw buildTimeoutError(timeoutMs);
@@ -4345,22 +4601,22 @@ async function callOpenAIAPI(prompt, modelConfig, responseType, retryCount = 0, 
     if (error.name === 'AbortError') {
       throw error;
     }
-      const isNetworkError = error.message && error.message.includes('fetch');
-      if (isNetworkError && retryCount < MAX_RETRY_ATTEMPTS - 1) {
-        const attempt = retryCount + 2;
-        const delayMs = getRetryDelayMs(retryCount);
-        const delaySec = Math.max(0.1, delayMs / 1000).toFixed(1);
-        setRetryLoadingWarning(`Network error, retrying (attempt ${attempt}/${MAX_RETRY_ATTEMPTS}) in ${delaySec}s...`);
-        await sleepWithAbort(delayMs, signal);
-        return callOpenAIAPI(prompt, modelConfig, responseType, retryCount + 1, options);
-      }
-      clearRetryLoadingWarning();
-      throw error;
-    } finally {
-      if (controller && currentAbortController === controller) {
-        currentAbortController = null;
-      }
+    const isNetworkError = error.message && error.message.includes('fetch');
+    if (isNetworkError && retryCount < MAX_RETRY_ATTEMPTS - 1) {
+      const attempt = retryCount + 2;
+      const delayMs = getRetryDelayMs(retryCount);
+      const delaySec = Math.max(0.1, delayMs / 1000).toFixed(1);
+      setRetryLoadingWarning(`Network error, retrying (attempt ${attempt}/${MAX_RETRY_ATTEMPTS}) in ${delaySec}s...`);
+      await sleepWithAbort(delayMs, signal);
+      return callResponsesAPI(providerConfig, prompt, modelConfig, responseType, retryCount + 1, options);
     }
+    clearRetryLoadingWarning();
+    throw error;
+  } finally {
+    if (controller && currentAbortController === controller) {
+      currentAbortController = null;
+    }
+  }
 }
 
 async function callGeminiAPI(prompt, modelConfig, responseType, retryCount = 0, options = {}) {
@@ -4737,7 +4993,7 @@ async function handleAnalysis() {
 
   if (!useSelectionTargets) {
     const requestedParallel = normalizeParallelCalls(maxParallelCalls);
-    const parallelEligible = provider === 'openai' && familyKey !== 'gpt5_pro';
+    const parallelEligible = (provider === 'openai' && familyKey !== 'gpt5_pro') || provider === 'openrouter';
     autoChunkingActive = autoChunkingEnabled && parallelEligible && requestedParallel > 1;
     effectiveChunkSize = autoChunkingActive
       ? computeAutoChunkSize(analysisText.length, requestedParallel, maxChunkSize)
@@ -5053,6 +5309,12 @@ async function handleAnalysis() {
         console.warn('Dropped boundary corrections (multi-selection):', boundaryFiltered.dropped.slice(0, 3));
       }
       mappedCorrections = boundaryFiltered.kept;
+      if (remapped.unmatched.length) {
+        unmatchedCorrections.push(...remapped.unmatched);
+      }
+      if (boundaryFiltered.dropped.length) {
+        unmatchedCorrections.push(...boundaryFiltered.dropped);
+      }
     }
 
     mappedCorrections.sort((a, b) => a.position.start - b.position.start);
@@ -6459,6 +6721,7 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
 
 function mapCorrectionsFromMultiSelection(correctionsArray, selectionMap, documentText) {
   const mapped = [];
+  const unmatched = [];
 
   for (const corr of correctionsArray) {
     const safe = normalizeCorrectionFields(corr);
@@ -6493,13 +6756,16 @@ function mapCorrectionsFromMultiSelection(correctionsArray, selectionMap, docume
           selectionIndex: foundMapping.selectionIndex
         });
       } else {
+        unmatched.push(safe);
         console.warn(`Text mismatch for correction in multi-selection: expected "${safe.original}", found "${expectedText}"`);
       }
+    } else {
+      unmatched.push(safe);
     }
   }
 
   mapped.sort((a, b) => a.position.start - b.position.start);
-  return { mapped, unmatched: [] };
+  return { mapped, unmatched };
 }
 
 function isWordChar(char) {
