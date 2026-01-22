@@ -1599,62 +1599,171 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #fdfaf3;
-  border: 1px solid #e3dfd6;
-  border-radius: 8px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-  padding: 28px;
+  background: linear-gradient(180deg, #fbf9f3 0%, #f7f3ea 100%);
+  border: 1px solid #e7e1d5;
+  border-radius: 12px;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.18);
+  padding: 26px 28px 24px;
   font-family: var(--font-sans);
   z-index: 1001;
   text-align: left;
-  max-width: 400px;
-  width: 90%;
+  max-width: 520px;
+  width: min(520px, 92vw);
   max-height: 90vh;
   overflow-y: auto;
 }
 
 .api-key-modal h2 {
-  font-size: 1.2rem;
-  margin-bottom: 12px;
-  font-weight: 500;
-  text-align: center;
+  font-size: 1.3rem;
+  margin: 2px 0 6px;
+  font-weight: 600;
+  text-align: left;
+  color: #1f2937;
 }
 
 .api-key-modal p {
-  color: #666;
-  margin-bottom: 20px;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  color: #4b5563;
+  margin-bottom: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
   word-break: break-word;
 }
 
-.api-key-examples {
-  background: #f7f6f1;
-  border: 1px solid #e2ded3;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin: 6px 0 18px;
+.api-key-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.api-key-kicker {
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.api-key-lede {
+  margin: 0;
+}
+
+.api-key-sources-note {
+  font-size: 0.86rem;
+  color: #374151;
+  margin-top: 4px;
+}
+
+.api-key-sources-note:empty {
+  display: none;
+}
+
+.api-key-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.api-key-section {
+  background: #ffffff;
+  border: 1px solid #e6e0d4;
+  border-radius: 10px;
+  padding: 12px 12px 14px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+}
+
+.api-key-section + .api-key-section {
+  margin-top: 0;
+}
+
+.api-key-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.api-key-card-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.api-key-chip {
+  background: #f1eee5;
   color: #444;
+  border: 1px solid #e2dbcd;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.api-key-hint {
+  margin: 4px 0 10px;
+  font-size: 0.85rem;
+  color: #555;
+  line-height: 1.4;
+}
+
+.api-key-modal input {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #d7d0c2;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  font-family: monospace;
+  background: #fdfbf7;
+  color: #111;
+}
+
+.api-key-note {
+  font-size: 0.85rem;
+  color: #444;
+  margin: 2px 0 8px;
+  line-height: 1.45;
+}
+
+.api-key-pill-label {
+  font-size: 0.82rem;
+  color: #374151;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+
+.api-key-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.api-key-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f8f5ed;
+  border: 1px solid #e2dbcd;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #333;
+}
+
+.api-key-pill code {
   font-size: 0.9rem;
 }
 
-.api-key-examples li {
-  margin-left: 18px;
-  line-height: 1.35;
+.api-key-persist {
+  background: #fff8ed;
+  border: 1px solid #f1e0c9;
 }
-.api-key-inline-list {
-  list-style: disc;
-  margin: 8px 0 0 18px;
-  padding: 0;
-  font-family: monospace;
-  color: #444;
-  line-height: 1.45;
-}
-.api-key-section + .api-key-section {
-  border-top: 1px solid #e2ded3;
-  padding-top: 12px;
-  margin-top: 12px;
-}
+
 .api-key-persist label {
   display: flex;
   align-items: flex-start;
@@ -1663,29 +1772,63 @@ body {
   line-height: 1.4;
 }
 
-.api-key-modal input {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+.api-key-warning {
+  margin-top: 4px;
+  color: #92400e;
   font-size: 0.9rem;
-  margin-bottom: 16px;
-  font-family: monospace;
+  line-height: 1.4;
 }
 
 .api-key-modal button {
-  padding: 8px 24px;
-  background: #333;
+  padding: 10px 16px;
+  background: #1f2937;
   color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
 .api-key-modal button:hover {
-  background: #111;
+  background: #111827;
+  transform: translateY(-1px);
+}
+
+.api-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.api-key-actions button {
+  flex: 1 1 140px;
+  text-align: center;
+}
+
+.api-key-modal #apiKeySkip,
+.api-key-modal #apiKeyClearStored {
+  background: #f5f0e6;
+  color: #1f2937;
+  border: 1px solid #e2dbcd;
+  box-shadow: none;
+}
+
+.api-key-modal #apiKeyClearStored {
+  background: #ffffff;
+}
+
+.api-key-modal #apiKeySubmit {
+  background: #2563eb;
+  border-color: #1d4ed8;
+}
+
+.api-key-modal #apiKeySubmit:hover {
+  background: #1d4ed8;
 }
 
 .credit-link {
@@ -2239,11 +2382,12 @@ body {
       <li><strong>Custom Ask:</strong> Ask a question about selected text; returns comments plus suggestions.</li>
     </ul>
     <p>Selections include a small read-only context window. You can optionally add the full document as an extra read-only context message (costly). Full-document runs include the LaTeX preamble.</p>
+    <p style="margin-top:10px; color:#555; font-size:0.9rem;">Models: OpenAI (default), OpenRouter (supports custom model ids like <code>openai/gpt-5.2</code>), and Gemini. Tools (web/python) are OpenAI-only; supporting files are sent only with OpenAI.</p>
 
     <h3>Files and history</h3>
     <ul>
       <li><strong>Upload:</strong> Replace the document or add supporting files (PDF, markdown, LaTeX).</li>
-      <li><strong>Supporting files:</strong> Sent with your prompt and count toward cost.</li>
+      <li><strong>Supporting files:</strong> Sent with your prompt (OpenAI only) and count toward cost.</li>
       <li><strong>Run history:</strong> Optional local storage in this browser profile.</li>
       <li><strong>Sessions:</strong> Save or load snapshots from the menu.</li>
       <li><strong>Request timeout:</strong> Optional menu setting; Off by default. Use it if a run hangs.</li>
@@ -2358,47 +2502,61 @@ body {
 <!-- API Key Modal -->
 <div class="api-key-modal" id="apiKeyModal" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle" tabindex="-1" style="display: none;">
   <button class="summary-close" id="apiKeyClose" aria-label="Close dialog">×</button>
-  <h2 id="apiKeyTitle">API Keys</h2>
-  <p style="margin-bottom:12px;">See Help for importing API keys.</p>
-  <p id="apiKeySourcesNote" style="margin-top:8px; font-size:0.8rem; color:#666;"></p>
-  <div class="api-key-section">
-    <h3>OpenAI</h3>
-    <label class="sr-only" for="apiKeyInput">OpenAI API key</label>
-    <input type="password" id="apiKeyInput" placeholder="Enter your OpenAI API key">
+  <div class="api-key-header">
+    <div class="api-key-kicker">API access</div>
+    <h2 id="apiKeyTitle">Connect your providers</h2>
+    <p class="api-key-lede">Paste the key for any provider you plan to use. Nothing is sent until you run a request.</p>
+    <p id="apiKeySourcesNote" class="api-key-sources-note"></p>
   </div>
-  <div class="api-key-section">
-    <h3>Gemini (Google)</h3>
-    <label class="sr-only" for="geminiApiKeyInput">Gemini API key</label>
-    <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key">
-  </div>
-  <div class="api-key-section">
-    <h3>OpenRouter</h3>
-    <label class="sr-only" for="openrouterApiKeyInput">OpenRouter API key</label>
-    <input type="password" id="openrouterApiKeyInput" placeholder="Enter your OpenRouter API key">
-  </div>
-  <div class="api-key-section">
-    <h3>OpenRouter custom model (optional)</h3>
-    <label class="sr-only" for="openrouterCustomModelInput">OpenRouter custom model id</label>
-    <input type="text" id="openrouterCustomModelInput" placeholder="e.g., openai/gpt-4.1">
-    <p style="margin-top:-6px; margin-bottom:12px; font-size:0.8rem; color:#555;">Leave blank to use your account default. This ID will be used whenever OpenRouter is selected.</p>
-    <p style="margin-top:0; margin-bottom:8px; font-size:0.9rem; color:#444;">Reasoning is chosen in the Reasoning dropdown (none/low/medium/high/xhigh; “Auto” uses task defaults).</p>
-    <ul class="api-key-inline-list" aria-label="Model ID examples">
-      <li><code>gpt-5.2</code> (OpenAI thinking) + Reasoning: High</li>
-      <li><code>gpt-4.1-mini</code> (OpenAI fast)</li>
-      <li><code>openai/gpt-5.2</code> (OpenRouter custom)</li>
-      <li><code>openai/gpt-4.1</code> (OpenRouter custom)</li>
-    </ul>
-  </div>
-  <div class="api-key-persist">
-    <label style="display:flex; align-items:center; gap:8px;">
-      <input type="checkbox" id="persistKeysToggle">
-      Remember keys on this device (local storage)
-    </label>
-    <div id="persistKeysNote" style="margin-top:4px; color:#92400e;">
-      Warning: Stored keys are only obfuscated. Anyone with access to this browser profile could recover them.
+  <div class="api-key-grid">
+    <div class="api-key-section">
+      <div class="api-key-card-heading">
+        <h3>OpenAI</h3>
+        <span class="api-key-chip">Format: sk-...</span>
+      </div>
+      <p class="api-key-hint">Paste your OpenAI secret key from platform.openai.com.</p>
+      <label class="sr-only" for="apiKeyInput">OpenAI API key</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-...">
+    </div>
+    <div class="api-key-section">
+      <div class="api-key-card-heading">
+        <h3>Gemini (Google)</h3>
+        <span class="api-key-chip">Format: AIza...</span>
+      </div>
+      <p class="api-key-hint">Use the API key from Google AI Studio.</p>
+      <label class="sr-only" for="geminiApiKeyInput">Gemini API key</label>
+      <input type="password" id="geminiApiKeyInput" placeholder="AIza...">
+    </div>
+    <div class="api-key-section">
+      <div class="api-key-card-heading">
+        <h3>OpenRouter</h3>
+        <span class="api-key-chip">Format: sk-or-...</span>
+      </div>
+      <p class="api-key-hint">OpenRouter key for routing through your account.</p>
+      <label class="sr-only" for="openrouterApiKeyInput">OpenRouter API key</label>
+      <input type="password" id="openrouterApiKeyInput" placeholder="sk-or-...">
+    </div>
+    <div class="api-key-section">
+      <div class="api-key-card-heading">
+        <h3>OpenRouter custom model</h3>
+        <span class="api-key-chip">Optional</span>
+      </div>
+      <p class="api-key-hint">Paste a full OpenRouter model id (e.g., <code>openai/gpt-5.2</code> or <code>openai/gpt-4.1</code>). Leave blank to use your OpenRouter account default.</p>
+      <label class="sr-only" for="openrouterCustomModelInput">OpenRouter custom model id</label>
+      <input type="text" id="openrouterCustomModelInput" placeholder="openai/gpt-4.1">
+      <div class="api-key-note">Reasoning level is set in the Reasoning dropdown (Auto uses task defaults). For thinking models like gpt-5.2, pick Reasoning: High.</div>
+    </div>
+    <div class="api-key-section api-key-persist">
+      <label>
+        <input type="checkbox" id="persistKeysToggle">
+        Remember keys on this device (local storage)
+      </label>
+      <div id="persistKeysNote" class="api-key-warning">
+        Warning: Stored keys are only obfuscated. Anyone with access to this browser profile could recover them.
+      </div>
     </div>
   </div>
-  <div style="display:flex; gap:8px; justify-content:center; margin-top:6px; flex-wrap:wrap;">
+  <div class="api-key-actions">
     <button id="apiKeySkip">Skip for now</button>
     <button id="apiKeyClearStored" type="button">Clear stored keys</button>
     <button id="apiKeySubmit">Save keys</button>
