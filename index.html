@@ -60,6 +60,33 @@ body {
   gap: 8px;
   align-items: flex-start;
   width: auto;
+  height: calc(100vh - 3rem);
+  overflow: hidden;
+}
+
+.header-scroll {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  padding-top: 8px;
+}
+
+.header-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.header-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+}
+
+.header-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .hamburger-btn,
@@ -142,6 +169,60 @@ body {
 
 .model-summary-btn:hover {
   box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+}
+
+.model-status-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  align-self: stretch;
+}
+
+.key-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.key-status-indicator:hover {
+  box-shadow: none;
+}
+
+.key-status-indicator .key-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+}
+
+.key-status-indicator.key-ok {
+  border-color: transparent;
+}
+
+.key-status-indicator.key-ok .key-status-dot {
+  background: #34d399;
+}
+
+.key-status-indicator.key-missing {
+  border-color: transparent;
+}
+
+.key-status-indicator.key-missing .key-status-dot {
+  background: #f87171;
+}
+
+.key-status-indicator .key-status-text {
+  display: none;
 }
 
 .shortcut-hint {
@@ -419,10 +500,15 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  height: 100vh;
   padding: 2rem;
   padding-left: 140px; /* Space for the sidebar + buttons */
   padding-bottom: 220px; /* Leave room for the fixed popover at the bottom */
   position: relative;
+}
+
+.main-content.popover-hidden {
+  padding-bottom: 80px;
 }
 
 /* Responsive: ensure content doesn't overlap on narrow viewports */
@@ -1848,6 +1934,7 @@ body {
 <!-- Header -->
 <div class="header">
   <button class="hamburger-btn" id="hamburgerBtn" aria-label="Open menu" aria-controls="hamburgerMenu" aria-expanded="false">☰</button>
+  <div class="header-scroll">
   <div class="header-actions">
     <button class="nav-btn icon-btn" id="copyBtn" title="Copy Text" aria-label="Copy text">
       <svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -1860,7 +1947,13 @@ body {
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
     </button>
   </div>
-  <button class="model-summary-btn" id="modelSummaryBtn" type="button" aria-label="Open menu">Model</button>
+  <div class="model-status-row">
+    <button class="model-summary-btn" id="modelSummaryBtn" type="button" aria-label="Open menu">Model</button>
+    <button class="key-status-indicator key-missing" id="keyStatusIndicator" type="button" aria-label="API key status (click to manage)">
+      <span class="key-status-dot" id="keyStatusDot"></span>
+      <span class="key-status-text" id="keyStatusText">Key status</span>
+    </button>
+  </div>
 
   <!-- Wrapper for analysis buttons to add the line above -->
   <div class="analysis-controls">
@@ -1910,6 +2003,7 @@ body {
     <a class="credit-link" href="https://kevinbryanecon.com" target="_blank" rel="noopener">Built by Kevin Bryan</a>
     <a class="credit-link" href="https://sites.google.com/site/slauerma/" target="_blank" rel="noopener" aria-label="Revised by Stephan Lauermann">Revised by Stephan Lauermann</a>
   </div>
+  </div>
 </div>
 
 <!-- Hamburger Menu -->
@@ -1927,6 +2021,7 @@ body {
       <button class="menu-item" id="loadSessionBtn">Load Session (.json)</button>
       <button class="menu-item" id="saveCheckpointBtn">Save checkpoint (local)</button>
       <button class="menu-item" id="restoreCheckpointBtn">Restore checkpoint (local)</button>
+      <button class="menu-item" id="removeLocalDataBtn">Remove all local data</button>
       <button class="menu-item" id="downloadDiffBtn">Download Global Diff (.txt)</button>
       <button class="menu-item" id="downloadLastRunsBtn">Download all last runs</button>
     </div>
@@ -1938,11 +2033,6 @@ body {
     <button class="menu-item" id="manageKeysBtn">API keys / status…</button>
     <button class="menu-item" id="viewDiffBtn">View Global Diff</button>
     <hr class="menu-divider">
-    <div class="menu-select-group">
-      <select id="ruleSelect" style="display: none;">
-        <!-- Options will be populated from styles.js -->
-      </select>
-    </div>
     <div class="menu-select-group">
       <label for="modelFamilySelect" class="sr-only">Model family:</label>
       <select id="modelFamilySelect">
@@ -2044,9 +2134,6 @@ body {
       <button id="apiStatusManageBtn" class="status-manage-btn" type="button">Manage keys</button>
     </div>
   </div>
-  <div id="apiPersistWarning" class="status-bar status-warning" style="display:none;">
-    Warning: API keys are stored locally on this device (obfuscated, not secure). Clear them via Manage keys if needed.
-  </div>
   <div id="saveStatusBar" class="status-bar" role="status" aria-live="polite" style="display: none;">
     <span id="saveStatusText"></span>
   </div>
@@ -2132,6 +2219,8 @@ body {
       Paste a JSON object of the form <code>{"corrections": [{ "original": "...", "corrected": "...", "explanation": "...", "type": "grammar" }]}</code>
       generated by ChatGPT or another model for this exact document.
       <br><br>
+      Use <strong>Validate</strong> to check alignment without applying changes.
+      <br><br>
       Tip: if JSON import fails, try the Unstructured Comments import, or regenerate JSON in two steps: (1) ask for a table with columns [original sentence, comment, correction], then (2) turn that table into the JSON shape above.
       <br><br>
       Prompt examples:
@@ -2146,9 +2235,53 @@ body {
     </p>
   </div>
   <div class="summary-section">
+    <details class="schema-preview" open>
+      <summary style="font-weight:600; cursor:pointer;">JSON schema preview</summary>
+      <ul style="margin-top:8px; color:#444; font-size:0.9rem;">
+        <li><code>corrections</code>: array, ordered as they appear in the document.</li>
+        <li><code>original</code>: required string; exact text to anchor (escape backslashes as <code>\\</code>).</li>
+        <li><code>corrected</code>: required string unless <code>type</code> is <code>"comment"</code>.</li>
+        <li><code>explanation</code>: optional short note shown in the popover.</li>
+        <li><code>type</code>: optional; <code>grammar</code> | <code>style</code> | <code>comment</code>.</li>
+        <li>Escaping: keep LaTeX braces, math mode (<code>$...$</code>), and macros; JSON still needs <code>\\</code> for backslashes.</li>
+      </ul>
+      <pre style="background:#f7f7f7; padding:10px; border-radius:6px; font-size:0.8rem; overflow:auto; margin-top:10px;">{
+  "corrections": [
+    {
+      "original": "We prove that $f(x) = x^{2}$ {see Appendix A}.",
+      "corrected": "We prove that $f(x)=x^{2}$\\, (see Appendix A).",
+      "explanation": "Tighten math-mode spacing and keep braces literal.",
+      "type": "grammar"
+    },
+    {
+      "original": "Let \\alpha_n denote the sequence in \\mathcal{F}.",
+      "corrected": "Let $\\alpha_n$ denote the sequence in \\mathcal{F}.",
+      "explanation": "LaTeX macros stay escaped (\\\\alpha_n, \\\\mathcal).",
+      "type": "style"
+    }
+  ]
+}</pre>
+    </details>
+  </div>
+  <div class="summary-section">
+    <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.9rem;">
+        <input type="checkbox" id="jsonNormalizeSpaces"> Ignore multiple spaces
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.9rem;">
+        <input type="checkbox" id="jsonNormalizeQuotes"> Normalize curly/straight quotes
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.9rem;">
+        <input type="checkbox" id="jsonNormalizeLinebreaks"> Ignore line breaks
+      </label>
+    </div>
+    <div class="shortcut-hint" style="margin-top:6px;">Anchoring options for matching <code>original</code> strings; applied to validation and import.</div>
+  </div>
+  <div class="summary-section">
     <textarea id="jsonInput" style="width:100%; height:200px; font-family:monospace; font-size:0.85rem;"></textarea>
   </div>
   <div class="popover-actions">
+    <button class="popover-btn" id="jsonValidateBtn">Validate</button>
     <button class="popover-btn reject" id="jsonCancelBtn">Cancel</button>
     <button class="popover-btn accept" id="jsonApplyBtn">Load Corrections</button>
   </div>
@@ -2360,17 +2493,16 @@ body {
 
 <!-- About Modal -->
 <div class="modal-overlay" id="aboutOverlay"></div>
-<div class="about-modal" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
+<div class="about-modal" id="aboutModal" role="dialog" aria-modal="true" aria-label="Help" tabindex="-1">
   <button class="summary-close" id="aboutClose" aria-label="Close dialog">×</button>
-  <h2 id="aboutTitle">Help</h2>
   <div class="about-body">
-    <p class="about-lede"><strong>Super Spell/Style/Grammar Check</strong> is a local editor that sends your text to a selected AI model for feedback and suggested edits.</p>
 
     <h3>Quick start</h3>
     <ol>
       <li>Paste or upload a document, or select a passage to focus.</li>
       <li>Choose a model and reasoning effort in the menu, then run Grammar, Style, Everything, or Custom.</li>
       <li>Review suggestions: use left/right arrows to move, Enter to accept, Backspace/Delete to reject.</li>
+      <li>Conveniently get a prepaid API key at OpenRouter (broad model access across providers) and paste it via the menu.</li>
     </ol>
 
     <h3>Tools</h3>

@@ -98,13 +98,11 @@ function setRunHistoryStorageWarning(message) {
 function openRunHistoryModal() {
   if (!runHistoryModal || !runHistoryOverlay) return;
   updateRunHistoryUI();
-  runHistoryModal.classList.add('visible');
-  runHistoryOverlay.classList.add('visible');
+  openModalPair(runHistoryModal, runHistoryOverlay);
 }
 
 function closeRunHistoryModal() {
-  if (runHistoryModal) runHistoryModal.classList.remove('visible');
-  if (runHistoryOverlay) runHistoryOverlay.classList.remove('visible');
+  closeModalPair(runHistoryModal, runHistoryOverlay);
 }
 
 function truncateRunHistoryText(value, limit) {
@@ -521,7 +519,7 @@ const SAMPLE_COMMENTS_FALLBACK = {
     'LaTeX .tex files are supported: the preamble is included for analysis and corrections map back to the original source.',
     'Session snapshots are stored locally; you can also save or load a full session as a .json file from the menu.'
   ];
-const REFINE_IMPORT_INSTRUCTION = 'High-level review comments are provided. Turn each comment into a concrete suggestion. If multiple edits are needed at several places, explain the overall idea of the edit in the first explanation. Be aggressive with the changes; the user can edit later.\n\n[Paste refine comments here]';
+const REFINE_IMPORT_INSTRUCTION = 'High-level review comments are provided. Turn each comment into a concrete suggestion. If multiple edits are needed at several places, explain the overall idea of the edit in the first explanation. Be aggressive with the changes; the user can edit later.\n\n[Paste refine comments here. Use high or xhigh reasoning effort.]';
 const CHECK_EVERYTHING_INSTRUCTION = `Check everything: grammar/spelling, clarity/style, factual accuracy, logical gaps, and math/notation issues.
 Prioritize correctness over style and preserve the author's meaning.
 Use type "style" for edits and type "comment" for note-only items (comment corrected must equal original).
@@ -664,7 +662,7 @@ lastRunModal.appendChild(lastRunTitle);
 lastRunModal.appendChild(lastRunBody);
 document.body.appendChild(lastRunOverlay);
 document.body.appendChild(lastRunModal);
-const ruleSelect = document.getElementById('ruleSelect');
+const ruleSelect = document.getElementById('ruleSelect') || document.getElementById('styleSelect');
 const simplificationModal = document.getElementById('simplificationModal');
 const simplificationOriginal = document.getElementById('simplificationOriginal');
 const simplificationOptions = document.getElementById('simplificationOptions');
@@ -675,6 +673,99 @@ const summaryContent = document.getElementById('summaryContent');
 const summaryClose = document.getElementById('summaryClose');
 const summaryModalHeader = summaryModal ? summaryModal.querySelector('h2') : null;
 const modalOverlay = document.getElementById('modalOverlay');
+let scrollLockCount = 0;
+let previousBodyOverflow = '';
+let focusTrap = null;
+
+function lockPageScroll() {
+  if (scrollLockCount === 0) {
+    previousBodyOverflow = document.body.style.overflow || '';
+    document.body.style.overflow = 'hidden';
+  }
+  scrollLockCount += 1;
+}
+
+function unlockPageScroll() {
+  if (scrollLockCount > 0) {
+    scrollLockCount -= 1;
+    if (scrollLockCount === 0) {
+      document.body.style.overflow = previousBodyOverflow;
+    }
+  }
+}
+
+function showLayer(layer) {
+  if (!layer || layer.classList.contains('visible')) return;
+  layer.classList.add('visible');
+  lockPageScroll();
+}
+
+function hideLayer(layer) {
+  if (!layer || !layer.classList.contains('visible')) return;
+  layer.classList.remove('visible');
+  unlockPageScroll();
+}
+
+function activateFocusTrap(modal) {
+  if (!modal) return;
+  const focusable = Array.from(
+    modal.querySelectorAll(
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1 && el.offsetParent !== null);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const previous = document.activeElement;
+
+  function handleKeydown(e) {
+    if (e.key !== 'Tab') return;
+    if (focusable.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    if (e.shiftKey) {
+      if (document.activeElement === first || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
+  modal.addEventListener('keydown', handleKeydown);
+  focusTrap = { modal, handler: handleKeydown, previous };
+  if (first) {
+    first.focus();
+  } else {
+    modal.focus?.();
+  }
+}
+
+function releaseFocusTrap(modal) {
+  if (!focusTrap || focusTrap.modal !== modal) return;
+  const { modal: trappedModal, handler, previous } = focusTrap;
+  trappedModal.removeEventListener('keydown', handler);
+  focusTrap = null;
+  if (previous && typeof previous.focus === 'function' && document.body.contains(previous)) {
+    previous.focus();
+  }
+}
+
+function openModalPair(modal, overlay) {
+  if (modal) modal.classList.add('visible');
+  if (overlay) showLayer(overlay);
+  activateFocusTrap(modal);
+}
+
+function closeModalPair(modal, overlay) {
+  if (modal) modal.classList.remove('visible');
+  releaseFocusTrap(modal);
+  if (overlay) hideLayer(overlay);
+}
 const apiKeyModal = document.getElementById('apiKeyModal');
 const apiKeyInput = document.getElementById('apiKeyInput');
 const openrouterApiKeyInput = document.getElementById('openrouterApiKeyInput');
@@ -799,7 +890,14 @@ const jsonOverlay = document.getElementById('jsonOverlay');
 const jsonInput = document.getElementById('jsonInput');
 const jsonClose = document.getElementById('jsonClose');
 const jsonCancelBtn = document.getElementById('jsonCancelBtn');
+const jsonValidateBtn = document.getElementById('jsonValidateBtn');
 const jsonApplyBtn = document.getElementById('jsonApplyBtn');
+const jsonNormalizeSpaces = document.getElementById('jsonNormalizeSpaces');
+const jsonNormalizeQuotes = document.getElementById('jsonNormalizeQuotes');
+const jsonNormalizeLinebreaks = document.getElementById('jsonNormalizeLinebreaks');
+const keyStatusIndicator = document.getElementById('keyStatusIndicator');
+const keyStatusDot = document.getElementById('keyStatusDot');
+const keyStatusText = document.getElementById('keyStatusText');
 const commentsModal = document.getElementById('commentsModal');
 const commentsOverlay = document.getElementById('commentsOverlay');
 const commentsTitleText = document.getElementById('commentsTitleText');
@@ -891,6 +989,44 @@ function setSaveStatus(ok, message, options = {}) {
       if (saveStatusBar) saveStatusBar.style.display = 'none';
     }, hideAfterMs);
   }
+}
+
+async function removeAllLocalData() {
+  const ok = confirm('Remove all local data? This clears stored keys, autosave/session snapshots, supporting-file indexes, run history, and settings on this device.');
+  if (!ok) return;
+
+  try {
+    localStorage.clear();
+  } catch (err) {
+    console.warn('Unable to clear localStorage:', err);
+  }
+  try {
+    sessionStorage.clear();
+  } catch (err) {
+    console.warn('Unable to clear sessionStorage:', err);
+  }
+
+  if (window.runHistoryStore && typeof window.runHistoryStore.clear === 'function') {
+    try {
+      await window.runHistoryStore.clear();
+      lastRuns = [];
+      setRunHistoryStorageWarning('');
+    } catch (err) {
+      console.warn('Unable to clear run history store:', err);
+    }
+  }
+
+  window.OPENAI_API_KEY = '';
+  window.OPENROUTER_API_KEY = '';
+  window.GEMINI_API_KEY = '';
+  keyState.openai.source = 'none';
+  keyState.openrouter.source = 'none';
+  keyState.gemini.source = 'none';
+
+  updatePersistKeysUI();
+  updateApiStatusUI();
+  updateRunHistoryUI();
+  setSaveStatus(true, 'Local data cleared', { autoHide: true });
 }
 
 function trySaveDocAutosave() {
@@ -1685,6 +1821,7 @@ const saveSessionBtn = document.getElementById('saveSessionBtn');
 const loadSessionBtn = document.getElementById('loadSessionBtn');
 const saveCheckpointBtn = document.getElementById('saveCheckpointBtn');
 const restoreCheckpointBtn = document.getElementById('restoreCheckpointBtn');
+const removeLocalDataBtn = document.getElementById('removeLocalDataBtn');
 const lastRunLogBtn = document.getElementById('lastRunLogBtn');
 const runHistoryBtn = document.getElementById('runHistoryBtn');
 const runHistoryOverlay = document.getElementById('runHistoryOverlay');
@@ -1698,6 +1835,7 @@ const runHistoryClearBtn = document.getElementById('runHistoryClearBtn');
 const downloadDiffBtn = document.getElementById('downloadDiffBtn');
 const downloadLastRunsBtn = document.getElementById('downloadLastRunsBtn');
 const viewDiffBtn = document.getElementById('viewDiffBtn');
+const viewDiffShortcutBtn = document.getElementById('viewDiffShortcutBtn');
 
 function focusEditorForShortcuts() {
   if (!documentInput || !corrections.length) return;
@@ -1723,6 +1861,7 @@ const popoverRejectBtn = document.getElementById('popoverRejectBtn');
 // Hamburger menu events
 hamburgerBtn.addEventListener('click', openHamburgerMenu);
 if (modelSummaryBtn) modelSummaryBtn.addEventListener('click', openHamburgerMenu);
+if (keyStatusIndicator) keyStatusIndicator.addEventListener('click', openApiKeyModal);
 menuClose.addEventListener('click', closeHamburgerMenu);
 menuOverlay.addEventListener('click', closeHamburgerMenu);
 
@@ -1815,10 +1954,17 @@ if (restoreCheckpointBtn) {
   });
 }
 
+if (removeLocalDataBtn) {
+  removeLocalDataBtn.addEventListener('click', () => {
+    closeHamburgerMenu();
+    removeAllLocalData();
+  });
+}
+
 
 function openHamburgerMenu() {
   hamburgerMenu.classList.add('open');
-  menuOverlay.classList.add('visible');
+  showLayer(menuOverlay);
   if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'true');
   
   // If current rule is a style, update style selector
@@ -1832,7 +1978,7 @@ function openHamburgerMenu() {
 
 function closeHamburgerMenu() {
   hamburgerMenu.classList.remove('open');
-  menuOverlay.classList.remove('visible');
+  hideLayer(menuOverlay);
   if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'false');
   if (fileSubmenu) fileSubmenu.classList.remove('open');
   if (fileMenuBtn) fileMenuBtn.setAttribute('aria-expanded', 'false');
@@ -2229,9 +2375,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateAutoChunkUI();
     });
   }
-  if (runHistoryBtn) {
-    runHistoryBtn.addEventListener('click', openRunHistoryModal);
-  }
   if (runHistoryModeSelect) {
     runHistoryModeSelect.addEventListener('change', updateRunHistoryNote);
   }
@@ -2333,12 +2476,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!restored) {
     maybeShowWelcomeModal();
   }
-
-  // Sync scroll
-  documentInput.addEventListener('scroll', () => {
-    highlightOverlay.scrollTop = documentInput.scrollTop;
-    highlightOverlay.scrollLeft = documentInput.scrollLeft;
-  });
 
   documentInput.addEventListener('input', () => {
       // If user types/pastes, clear corrections and resync selection
@@ -2452,6 +2589,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  const ACTIONS = {
+    viewDiff: () => showGlobalDiffModal(),
+    runHistory: () => openRunHistoryModal(),
+    deepAuditReport: () => showDeepAuditReportModal(),
+  };
+
+  function bindAction(actionId, elements, { closeMenu = false } = {}) {
+    const handler = ACTIONS[actionId];
+    if (!handler || !Array.isArray(elements)) return;
+    elements.filter(Boolean).forEach((el) => {
+      el.addEventListener('click', () => {
+        if (closeMenu) closeHamburgerMenu();
+        handler();
+      });
+    });
+  }
+
   if (lastRunLogBtn) {
     lastRunLogBtn.addEventListener('click', () => {
       closeHamburgerMenu();
@@ -2459,11 +2613,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   if (deepAuditReportBtn) {
-    deepAuditReportBtn.addEventListener('click', () => {
-      closeHamburgerMenu();
-      showDeepAuditReportModal();
-    });
+    bindAction('deepAuditReport', [deepAuditReportBtn], { closeMenu: true });
   }
+  bindAction('runHistory', [runHistoryBtn], { closeMenu: true });
   if (downloadDiffBtn) {
     downloadDiffBtn.addEventListener('click', () => {
       closeHamburgerMenu();
@@ -2476,12 +2628,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       downloadLastRunsSnapshot();
     });
   }
-  if (viewDiffBtn) {
-    viewDiffBtn.addEventListener('click', () => {
-      closeHamburgerMenu();
-      showGlobalDiffModal();
-    });
-  }
+  bindAction('viewDiff', [viewDiffBtn, viewDiffShortcutBtn], { closeMenu: true });
 
   if (lastRunClose) lastRunClose.addEventListener('click', hideLastRunModal);
   lastRunOverlay.addEventListener('click', hideLastRunModal);
@@ -2489,6 +2636,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (jsonClose) jsonClose.addEventListener('click', closeJsonModal);
   if (jsonCancelBtn) jsonCancelBtn.addEventListener('click', closeJsonModal);
   if (jsonOverlay) jsonOverlay.addEventListener('click', closeJsonModal);
+  if (jsonValidateBtn) jsonValidateBtn.addEventListener('click', validateJsonAgainstDocument);
   if (jsonApplyBtn) jsonApplyBtn.addEventListener('click', handleJsonImport);
 
 if (commentsClose) commentsClose.addEventListener('click', closeCommentsModal);
@@ -2616,10 +2764,6 @@ if (selectionContextOverlay) selectionContextOverlay.addEventListener('click', (
 simplifyBtn.addEventListener('click', handleSimplification);
 proofBtn.addEventListener('click', handleProofCheck);
 customAskBtn.addEventListener('click', handleCustomAsk);
-const viewDiffShortcutBtn = document.getElementById('viewDiffShortcutBtn');
-if (viewDiffShortcutBtn) {
-  viewDiffShortcutBtn.addEventListener('click', showGlobalDiffModal);
-}
 const reviewLastEditsBtn = document.getElementById('reviewLastEditsBtn');
 if (reviewLastEditsBtn) {
   reviewLastEditsBtn.addEventListener('click', () => {
@@ -2757,6 +2901,7 @@ if (supportFilesDropZone) {
 document.addEventListener('keydown', (e) => {
   const isSave = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S');
   if (isSave) {
+    if (window.__ME_VSCODE__) return; // let VS Code handle save in the extension
     e.preventDefault();
     downloadCurrentSessionSnapshot();
     return;
@@ -3184,10 +3329,27 @@ function updateApiStatusUI() {
     ok = true;
   }
 
+  const providerLabel = provider === 'openrouter' ? 'OpenRouter'
+    : provider === 'gemini' ? 'Gemini'
+    : 'OpenAI';
+  const indicatorLabel = ok ? `Ready · ${providerLabel}` : `Add key · ${providerLabel}`;
+
   apiStatusText.textContent = status;
   apiStatusBar.classList.toggle('status-ok', ok);
   apiStatusBar.classList.toggle('status-missing', !ok);
   apiStatusBar.style.display = ok ? 'none' : 'flex';
+  if (keyStatusIndicator) {
+    keyStatusIndicator.classList.toggle('key-ok', ok);
+    keyStatusIndicator.classList.toggle('key-missing', !ok);
+    keyStatusIndicator.title = status;
+    keyStatusIndicator.setAttribute('aria-label', `API key status: ${indicatorLabel}`);
+  }
+  if (keyStatusText) {
+    keyStatusText.textContent = indicatorLabel;
+  }
+  if (keyStatusDot) {
+    keyStatusDot.setAttribute('data-state', ok ? 'ok' : 'missing');
+  }
 
   if (tryExampleBtn) {
     const noKeysAtAll = !window.OPENAI_API_KEY && !window.OPENROUTER_API_KEY && !window.GEMINI_API_KEY;
@@ -3202,13 +3364,11 @@ function markWelcomeSeen() {
 
 function openWelcomeModal() {
   if (!welcomeModal || !welcomeOverlay) return;
-  welcomeModal.classList.add('visible');
-  welcomeOverlay.classList.add('visible');
+  openModalPair(welcomeModal, welcomeOverlay);
 }
 
 function closeWelcomeModal() {
-  if (welcomeModal) welcomeModal.classList.remove('visible');
-  if (welcomeOverlay) welcomeOverlay.classList.remove('visible');
+  closeModalPair(welcomeModal, welcomeOverlay);
   markWelcomeSeen();
 }
 
@@ -4839,16 +4999,14 @@ function showSelectionContextModal() {
   if (selectionContextResolver) {
     return Promise.resolve(false);
   }
-  selectionContextModal.classList.add('visible');
-  selectionContextOverlay.classList.add('visible');
+  openModalPair(selectionContextModal, selectionContextOverlay);
   return new Promise((resolve) => {
     selectionContextResolver = resolve;
   });
 }
 
 function closeSelectionContextModal(includeFullDocument) {
-  if (selectionContextModal) selectionContextModal.classList.remove('visible');
-  if (selectionContextOverlay) selectionContextOverlay.classList.remove('visible');
+  closeModalPair(selectionContextModal, selectionContextOverlay);
   if (selectionContextResolver) {
     const resolve = selectionContextResolver;
     selectionContextResolver = null;
@@ -5006,10 +5164,10 @@ async function handleAnalysis() {
       : 1;
     if (!Number.isFinite(parallelism) || parallelism < 1) parallelism = 1;
     const chunkingActive = chunks.length > 1;
-    allowSupportingFiles = provider === 'openai' && chunks.length <= 1 && parallelism <= 1;
+    allowSupportingFiles = provider === 'openai';
     confirmReason = provider !== 'openai'
       ? 'provider'
-      : (allowSupportingFiles ? '' : (chunkingActive && parallelism > 1 ? 'chunking+parallel' : (parallelism > 1 ? 'parallel' : 'chunking')));
+      : (chunkingActive && parallelism > 1 ? 'chunking+parallel' : (parallelism > 1 ? 'parallel' : (chunkingActive ? 'chunking' : '')));
 
     if (supportingFiles.length) {
       const confirmation = await confirmSupportingFilesBeforeRun({
@@ -5028,7 +5186,7 @@ async function handleAnalysis() {
       effectiveChunkSize = Math.max(analysisText.length, MIN_CHUNK_SIZE);
       chunks = splitTextIntoChunksWithOffsets(analysisText, effectiveChunkSize);
       parallelism = 1;
-      allowSupportingFiles = provider === 'openai' && chunks.length <= 1;
+      allowSupportingFiles = provider === 'openai';
       confirmReason = allowSupportingFiles ? '' : 'chunking';
     }
   } else if (supportingFiles.length) {
@@ -5535,8 +5693,7 @@ function displayProofCheck(result) {
 
   centerSummaryModal();
   summaryContent.innerHTML = html;
-  summaryModal.classList.add('visible');
-  modalOverlay.classList.add('visible');
+  openModalPair(summaryModal, modalOverlay);
   
   // Restore original title when modal closes
   const restoreTitle = () => {
@@ -5556,6 +5713,7 @@ function formatUnmatchedSuggestion(item) {
   if (item.original) parts.push(`<div><strong>Original:</strong> ${escapeHtml(item.original)}</div>`);
   if (item.corrected) parts.push(`<div><strong>Suggested:</strong> ${escapeHtml(item.corrected)}</div>`);
   if (item.explanation) parts.push(`<div><strong>Note:</strong> ${escapeHtml(item.explanation)}</div>`);
+  if (item.reason) parts.push(`<div class="shortcut-hint" style="color:#a33;"><strong>Why:</strong> ${escapeHtml(item.reason)}</div>`);
   if (parts.length) return parts.join('');
   return escapeHtml(JSON.stringify(item, null, 2));
 }
@@ -5590,8 +5748,56 @@ function showUnmatchedSuggestions(unmatched, options = {}) {
 
   centerSummaryModal();
   summaryContent.innerHTML = html;
-  summaryModal.classList.add('visible');
-  modalOverlay.classList.add('visible');
+  openModalPair(summaryModal, modalOverlay);
+
+  if (modalTitle) {
+    const restoreTitle = () => {
+      modalTitle.textContent = originalTitle;
+      modalOverlay.removeEventListener('click', restoreTitle);
+      summaryClose.removeEventListener('click', restoreTitle);
+    };
+    modalOverlay.addEventListener('click', restoreTitle);
+    summaryClose.addEventListener('click', restoreTitle);
+  }
+}
+
+function showValidationResults(matchedCount, unmatched, normalization = {}) {
+  if (!summaryModal || !summaryContent || !modalOverlay) {
+    alert(`${matchedCount} corrections matched; ${unmatched.length} did not.`);
+    return;
+  }
+
+  const labels = [];
+  if (normalization.ignoreMultipleSpaces) labels.push('ignore multiple spaces');
+  if (normalization.normalizeQuotes) labels.push('normalize quotes');
+  if (normalization.ignoreLineBreaks) labels.push('ignore line breaks');
+  const normalizationText = labels.length ? labels.join(', ') : 'none (exact match only)';
+
+  const limit = 80;
+  const intro = unmatched.length
+    ? `${matchedCount} corrections matched this document. ${unmatched.length} did not match and would be skipped.`
+    : `All ${matchedCount} corrections matched this document.`;
+  const itemsHtml = unmatched.length
+    ? unmatched.slice(0, limit).map(item => `<li>${formatUnmatchedSuggestion(item)}</li>`).join('')
+    : '<p style="color:#2e7d32; font-weight:600;">No mismatches detected.</p>';
+  const note = unmatched.length > limit ? `<p>${escapeHtml(`Showing first ${limit} mismatches.`)}</p>` : '';
+
+  const modalTitle = summaryModal.querySelector('h2');
+  const originalTitle = modalTitle ? modalTitle.textContent : '';
+  if (modalTitle) modalTitle.textContent = 'Validation results';
+
+  const html = `
+    <div class="summary-section">
+      <p>${escapeHtml(intro)}</p>
+      <p class="shortcut-hint">Normalization: ${escapeHtml(normalizationText)}</p>
+      ${note}
+      ${unmatched.length ? `<ul>${itemsHtml}</ul>` : itemsHtml}
+    </div>
+  `;
+
+  centerSummaryModal();
+  summaryContent.innerHTML = html;
+  openModalPair(summaryModal, modalOverlay);
 
   if (modalTitle) {
     const restoreTitle = () => {
@@ -5646,8 +5852,7 @@ function displaySimplifications(options) {
   });
 
   // Show modal
-  simplificationModal.classList.add('visible');
-  simplificationOverlay.classList.add('visible');
+  openModalPair(simplificationModal, simplificationOverlay);
 }
 
 function replaceSelectedText(newText) {
@@ -5664,13 +5869,11 @@ function replaceSelectedText(newText) {
 }
 
 function closeSimplificationModal() {
-  simplificationModal.classList.remove('visible');
-  simplificationOverlay.classList.remove('visible');
+  closeModalPair(simplificationModal, simplificationOverlay);
 }
 
 function closeSummaryModal() {
-  summaryModal.classList.remove('visible');
-  modalOverlay.classList.remove('visible');
+  closeModalPair(summaryModal, modalOverlay);
   centerSummaryModal();
 }
 
@@ -5695,11 +5898,19 @@ function applyCorrectionsArray(correctionsArray, options = {}) {
   const latex = extractLatexContent(fullText);
   const analysisText = latex.text;
   const baseOffset = latex.offset || 0;
-  let { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset);
+  const normalization = options.normalization || {};
+  let { mapped, unmatched } = mapCorrectionsToPositions(correctionsArray, analysisText, baseOffset, {
+    normalization,
+    explainMismatches: !!options.explainMismatches
+  });
   const overlapCheck = filterOverlappingCorrections(mapped);
   mapped = overlapCheck.kept;
   if (overlapCheck.dropped.length) {
-    unmatched = unmatched.concat(overlapCheck.dropped);
+    const overlapTagged = overlapCheck.dropped.map((item) => ({
+      ...item,
+      reason: 'Dropped because it overlaps another mapped correction.'
+    }));
+    unmatched = unmatched.concat(overlapTagged);
   }
 
   if (!mapped.length) {
@@ -6177,15 +6388,144 @@ function normalizeImportedCorrections(correctionsArray) {
   }).filter(Boolean);
 }
 
-// Handle pasted JSON corrections (manual import)
-function handleJsonImport() {
+function hasNormalizationOptions(options = {}) {
+  return !!(options.ignoreMultipleSpaces || options.normalizeQuotes || options.ignoreLineBreaks);
+}
+
+function normalizeQuoteChar(ch) {
+  if (typeof ch !== 'string' || !ch.length) return ch;
+  if (/[\u201C\u201D\u201E\u201F]/.test(ch)) return '"';
+  if (/[\u2018\u2019\u201A\u201B]/.test(ch)) return "'";
+  return ch;
+}
+
+function normalizeTextForOptions(text, options = {}, forceCollapseSpaces = false) {
+  if (text == null) return '';
+  const opts = options || {};
+  let out = typeof text === 'string' ? text : String(text);
+  if (opts.normalizeQuotes) {
+    out = out.replace(/[\u201C\u201D\u201E\u201F]/g, '"').replace(/[\u2018\u2019\u201A\u201B]/g, '\'');
+  }
+  if (opts.ignoreLineBreaks) {
+    out = out.replace(/\r?\n/g, ' ');
+  }
+  if (opts.ignoreMultipleSpaces || forceCollapseSpaces) {
+    out = out.replace(/\s+/g, ' ');
+  }
+  return out;
+}
+
+function buildNormalizedIndex(text, options = {}) {
+  if (typeof text !== 'string' || !hasNormalizationOptions(options)) {
+    return null;
+  }
+  const spanStart = [];
+  const spanEnd = [];
+  let normalized = '';
+  let lastWasSpace = false;
+
+  for (let i = 0; i < text.length; i++) {
+    let ch = text[i];
+    if (options.normalizeQuotes) {
+      ch = normalizeQuoteChar(ch);
+    }
+    if (options.ignoreLineBreaks && (ch === '\n' || ch === '\r')) {
+      ch = ' ';
+    }
+    const isSpace = /\s/.test(ch);
+    if (options.ignoreMultipleSpaces && isSpace) {
+      if (lastWasSpace) {
+        if (spanEnd.length) {
+          spanEnd[spanEnd.length - 1] = i;
+        }
+        continue;
+      }
+      ch = ' ';
+      lastWasSpace = true;
+    } else {
+      lastWasSpace = options.ignoreMultipleSpaces && isSpace;
+    }
+    normalized += ch;
+    spanStart.push(i);
+    spanEnd.push(i);
+  }
+
+  return { normalized, spanStart, spanEnd, raw: text };
+}
+
+function findNormalizedStartIndex(spanStart, rawIndex) {
+  if (!Array.isArray(spanStart)) return 0;
+  for (let i = 0; i < spanStart.length; i++) {
+    if (spanStart[i] >= rawIndex) return i;
+  }
+  return spanStart.length;
+}
+
+function findNormalizedMatch(textIndex, original, searchFromIndex, options = {}) {
+  if (!textIndex || typeof textIndex.normalized !== 'string') return null;
+  const normalizedOriginal = normalizeTextForOptions(
+    original,
+    options,
+    options.ignoreMultipleSpaces || options.ignoreLineBreaks
+  );
+  if (!normalizedOriginal) return null;
+  const startIdx = findNormalizedStartIndex(textIndex.spanStart, searchFromIndex);
+  const foundAt = textIndex.normalized.indexOf(normalizedOriginal, startIdx);
+  if (foundAt === -1) return null;
+  const endNormIndex = foundAt + normalizedOriginal.length - 1;
+  if (endNormIndex < 0 || endNormIndex >= textIndex.spanEnd.length) return null;
+  const rawStart = textIndex.spanStart[foundAt];
+  const rawEnd = textIndex.spanEnd[endNormIndex] + 1;
+  const matchedText = textIndex.raw.substring(rawStart, rawEnd);
+  return { start: rawStart, end: rawEnd, matchedText, usedNormalization: true };
+}
+
+function describeMismatch(text, safeOriginal, options = {}) {
+  const hints = [];
+  const normalization = options.normalization || {};
+  const collapsedDoc = options.collapsedDoc || '';
+  const quotesDoc = options.quotesDoc || '';
+
+  const collapsedOriginal = normalizeTextForOptions(safeOriginal, { ignoreMultipleSpaces: true, ignoreLineBreaks: true }, true);
+  if (collapsedDoc && collapsedDoc.includes(collapsedOriginal)) {
+    const alreadyIgnoring = normalization.ignoreMultipleSpaces || normalization.ignoreLineBreaks;
+    hints.push(alreadyIgnoring
+      ? 'Spacing/line breaks were normalized but this span still did not anchor.'
+      : 'Matches after collapsing repeated spaces or line breaks; enable spacing normalization.');
+  }
+
+  const quoteNormalizedOriginal = normalizeTextForOptions(safeOriginal, { normalizeQuotes: true });
+  if (quotesDoc && quotesDoc.includes(quoteNormalizedOriginal)) {
+    hints.push(normalization.normalizeQuotes
+      ? 'Quotes were normalized already; check surrounding wording.'
+      : 'Curly vs straight quotes differ; enable “normalize quotes”.');
+  }
+
+  if (/\\[A-Za-z]+/.test(safeOriginal) || /\$[^$]+\$/.test(safeOriginal) || /\{[^}]+\}/.test(safeOriginal)) {
+    hints.push('Contains LaTeX/macros; check if macros expanded or braces were stripped.');
+  }
+
+  if (!hints.length) {
+    return 'No close match found in the document. Confirm the text still exists in this draft.';
+  }
+  return hints.join(' ');
+}
+
+function getJsonNormalizationOptions() {
+  return {
+    ignoreMultipleSpaces: !!(jsonNormalizeSpaces && jsonNormalizeSpaces.checked),
+    normalizeQuotes: !!(jsonNormalizeQuotes && jsonNormalizeQuotes.checked),
+    ignoreLineBreaks: !!(jsonNormalizeLinebreaks && jsonNormalizeLinebreaks.checked)
+  };
+}
+
+function parseCorrectionsFromJsonInput() {
   const raw = (jsonInput && jsonInput.value || '').trim();
   if (!raw) {
     alert('Please paste JSON corrections or a full model response. If this import fails, try Unstructured Comments, or regenerate JSON in two steps: table (original, comment, correction) then JSON.');
-    return;
+    return null;
   }
 
-  // Strip ```json fences if present
   const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/, '');
 
   const findSuspiciousBackslash = (s) => {
@@ -6198,14 +6538,14 @@ function handleJsonImport() {
     s.replace(/\\(?![\\\/"bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
 
   let parsed;
+  let autoEscaped = false;
   try {
     parsed = JSON.parse(cleaned);
   } catch (e) {
-    // Heuristic: try to auto-escape lone backslashes once
     try {
-      const autoEscaped = autoEscapeBackslashes(cleaned);
-      parsed = JSON.parse(autoEscaped);
-      alert('Note: JSON had likely unescaped backslashes. Auto-escaped and parsed. Please review the imported corrections.');
+      const escapedPayload = autoEscapeBackslashes(cleaned);
+      parsed = JSON.parse(escapedPayload);
+      autoEscaped = true;
     } catch (e2) {
       const idx = findSuspiciousBackslash(cleaned);
       const snippet = idx >= 0
@@ -6215,7 +6555,7 @@ function handleJsonImport() {
         'Invalid JSON: ' + e.message +
         (snippet ? '\n\nSuspicious backslash near:\n...' + snippet + '...' : '')
       );
-      return;
+      return null;
     }
   }
 
@@ -6226,18 +6566,65 @@ function handleJsonImport() {
 
   if (!Array.isArray(correctionsArray) || correctionsArray.length === 0) {
     alert('JSON must contain a "corrections" array (or a full response with embedded corrections). If this import fails, try Unstructured Comments, or regenerate JSON via a two-step prompt: first a table (original, comment, correction), then convert the table to the JSON shape.');
-    return;
+    return null;
   }
+
+  if (autoEscaped) {
+    alert('Note: JSON had likely unescaped backslashes. Auto-escaped and parsed. Please review the imported corrections.');
+  }
+
+  return { corrections: correctionsArray };
+}
+
+// Handle pasted JSON corrections (manual import)
+function handleJsonImport() {
+  const parsed = parseCorrectionsFromJsonInput();
+  if (!parsed) return;
 
   if (!documentInput.value.trim()) {
     alert('Document is empty; paste or load your text first. If import keeps failing, try Unstructured Comments or regenerate JSON via the two-step table→JSON approach.');
     return;
   }
-  const applied = applyCorrectionsArray(correctionsArray);
+  const applied = applyCorrectionsArray(parsed.corrections, {
+    normalization: getJsonNormalizationOptions(),
+    explainMismatches: true
+  });
   if (!applied) return;
 
   if (jsonModal) jsonModal.classList.remove('visible');
   if (jsonOverlay) jsonOverlay.classList.remove('visible');
+}
+
+function validateJsonAgainstDocument() {
+  const parsed = parseCorrectionsFromJsonInput();
+  if (!parsed) return;
+
+  const fullText = documentInput.value || '';
+  if (!fullText.trim()) {
+    alert('Document is empty; paste or load your text first.');
+    return;
+  }
+
+  const normalization = getJsonNormalizationOptions();
+  const latex = extractLatexContent(fullText);
+  const analysisText = latex.text;
+  const baseOffset = latex.offset || 0;
+
+  let { mapped, unmatched } = mapCorrectionsToPositions(parsed.corrections, analysisText, baseOffset, {
+    normalization,
+    explainMismatches: true
+  });
+  const overlapCheck = filterOverlappingCorrections(mapped);
+  mapped = overlapCheck.kept;
+  if (overlapCheck.dropped.length) {
+    const overlapTagged = overlapCheck.dropped.map((item) => ({
+      ...item,
+      reason: 'Dropped because it overlaps another mapped correction.'
+    }));
+    unmatched = unmatched.concat(overlapTagged);
+  }
+
+  showValidationResults(mapped.length, unmatched, normalization);
 }
 
 async function handleExampleImport() {
@@ -6455,10 +6842,17 @@ function updateActiveCorrection(options = {}) {
   updateNavigation();
 }
 
+function setPopoverPaddingActive(isVisible) {
+  if (!mainContent) return;
+  mainContent.classList.toggle('popover-hidden', !isVisible);
+}
+setPopoverPaddingActive(false);
+
 function showPopoverFor(element, options = {}) {
     const { scroll = true } = options;
     const correction = corrections[currentIndex];
     if (!correction) return;
+    setPopoverPaddingActive(true);
 
     popoverExplanation.textContent = correction.explanation || '';
     popoverCorrected.removeAttribute('contenteditable');
@@ -6491,6 +6885,7 @@ function showPopoverFor(element, options = {}) {
 
 function hidePopover() {
     suggestionPopover.classList.remove('visible');
+    setPopoverPaddingActive(false);
     document.querySelectorAll('.suggestion.active').forEach(el => el.classList.remove('active'));
 }
 
@@ -6659,6 +7054,22 @@ function normalizeCorrectionFields(corr) {
   return normalized;
 }
 
+// Collapse repeated backslashes (e.g., \"\\\\citet\" -> \"\\citet\") to catch over-escaped inputs
+function collapseBackslashesOnce(str) {
+  return typeof str === 'string' ? str.replace(/\\{2,}/g, '\\') : str;
+}
+
+function findAllIndices(haystack, needle) {
+  const hits = [];
+  if (!haystack || !needle) return hits;
+  let idx = haystack.indexOf(needle);
+  while (idx !== -1) {
+    hits.push(idx);
+    idx = haystack.indexOf(needle, idx + needle.length || 1);
+  }
+  return hits;
+}
+
 // Map an array of corrections onto positions within the given text
 function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, options = {}) {
   const allowFuzzy = options.allowFuzzy !== false;
@@ -6667,6 +7078,17 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
   const maxFuzzyTextLength = Number.isFinite(options.maxFuzzyTextLength)
     ? options.maxFuzzyTextLength
     : FUZZY_MATCH_MAX_TEXT;
+  const normalization = options.normalization || {};
+  const useNormalization = hasNormalizationOptions(normalization);
+  const normalizedIndex = useNormalization ? buildNormalizedIndex(text, normalization) : null;
+  const explainMismatches = !!options.explainMismatches;
+  const mismatchContext = explainMismatches
+    ? {
+        normalization,
+        collapsedDoc: normalizeTextForOptions(text, { ignoreMultipleSpaces: true, ignoreLineBreaks: true }, true),
+        quotesDoc: normalizeTextForOptions(text, { normalizeQuotes: true })
+      }
+    : null;
   let searchFromIndex = 0;
   const mapped = [];
   const unmatched = [];
@@ -6677,34 +7099,99 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
       continue;
     }
 
-    let foundAtIndex = text.indexOf(safe.original, searchFromIndex);
-    let usedFuzzy = false;
-    if (foundAtIndex === -1 && allowFuzzy) {
-      foundAtIndex = text.indexOf(safe.original);
-    }
-    if (foundAtIndex === -1 && allowFuzzy) {
-      foundAtIndex = findApproxMatch(text, safe.original, searchFromIndex, maxDist, searchWindow);
-      usedFuzzy = foundAtIndex !== -1;
-      if (foundAtIndex === -1 && text.length <= maxFuzzyTextLength) {
-        foundAtIndex = findApproxMatchWhole(text, safe.original, maxDist);
-        usedFuzzy = foundAtIndex !== -1;
+    const candidates = [];
+    const candidateKeys = new Set();
+    const editCap = Math.max(FUZZY_MATCH_MAX_DIST, Math.ceil(Math.min(safe.original.length, 200) * 0.3));
+    const methodRank = { exact: 0, normalized: 1, 'backslash-normalized': 2, fuzzy: 3 };
+
+    const addCandidate = (start, end, method, mappedOriginal) => {
+      if (start < 0 || end < 0 || end > text.length || start >= end) return;
+      const key = `${start}:${end}`;
+      if (candidateKeys.has(key)) return;
+      candidateKeys.add(key);
+      const editDist = boundedLevenshtein(mappedOriginal, safe.original, editCap);
+      candidates.push({ start, end, method, mappedOriginal, editDist });
+    };
+
+    // Exact matches (all occurrences)
+    findAllIndices(text, safe.original).forEach((hit) => {
+      addCandidate(hit, hit + safe.original.length, 'exact', text.substring(hit, hit + safe.original.length));
+    });
+
+    // Normalized matches (spacing/quotes/line breaks)
+    if (useNormalization) {
+      const normalizedOriginal = normalizeTextForOptions(
+        safe.original,
+        normalization,
+        normalization.ignoreMultipleSpaces || normalization.ignoreLineBreaks
+      );
+      if (normalizedOriginal && normalizedIndex && normalizedIndex.normalized) {
+        const startNorm = findNormalizedStartIndex(normalizedIndex?.spanStart, searchFromIndex);
+        let foundAt = normalizedIndex.normalized.indexOf(normalizedOriginal, startNorm);
+        while (foundAt !== -1) {
+          const endNormIndex = foundAt + normalizedOriginal.length - 1;
+          if (endNormIndex >= 0 && endNormIndex < normalizedIndex.spanEnd.length) {
+            const rawStart = normalizedIndex.spanStart[foundAt];
+            const rawEnd = normalizedIndex.spanEnd[endNormIndex] + 1;
+            addCandidate(rawStart, rawEnd, 'normalized', text.substring(rawStart, rawEnd));
+          }
+          foundAt = normalizedIndex.normalized.indexOf(normalizedOriginal, foundAt + 1);
+        }
       }
     }
 
-    if (foundAtIndex !== -1) {
-      const snippet = text.substring(foundAtIndex, foundAtIndex + safe.original.length);
-      const mappedOriginal = usedFuzzy ? snippet : safe.original;
+    // Backslash-collapsed matches
+    const collapsedOriginal = collapseBackslashesOnce(safe.original);
+    if (collapsedOriginal !== safe.original) {
+      findAllIndices(text, collapsedOriginal).forEach((hit) => {
+        addCandidate(hit, hit + collapsedOriginal.length, 'backslash-normalized', text.substring(hit, hit + collapsedOriginal.length));
+      });
+    }
+
+    // Fuzzy matches (bounded window, then whole-text fallback)
+    if (allowFuzzy) {
+      let fuzzyAt = findApproxMatch(text, safe.original, searchFromIndex, maxDist, searchWindow);
+      if (fuzzyAt !== -1) {
+        addCandidate(fuzzyAt, fuzzyAt + safe.original.length, 'fuzzy', text.substring(fuzzyAt, fuzzyAt + safe.original.length));
+      } else if (text.length <= maxFuzzyTextLength) {
+        fuzzyAt = findApproxMatchWhole(text, safe.original, maxDist);
+        if (fuzzyAt !== -1) {
+          addCandidate(fuzzyAt, fuzzyAt + safe.original.length, 'fuzzy', text.substring(fuzzyAt, fuzzyAt + safe.original.length));
+        }
+      }
+    }
+
+    const scoreCandidate = (cand) => {
+      const rank = methodRank[cand.method] ?? 4;
+      const posDelta = cand.start - searchFromIndex;
+      const posPenalty = posDelta >= 0 ? posDelta : 100000 + Math.abs(posDelta);
+      return [rank, cand.editDist, posPenalty, cand.start];
+    };
+
+    if (candidates.length) {
+      candidates.sort((a, b) => {
+        const sa = scoreCandidate(a);
+        const sb = scoreCandidate(b);
+        for (let i = 0; i < sa.length; i++) {
+          if (sa[i] < sb[i]) return -1;
+          if (sa[i] > sb[i]) return 1;
+        }
+        return 0;
+      });
+      const best = candidates[0];
       mapped.push({
         ...safe,
-        original: mappedOriginal,
+        original: best.mappedOriginal,
         position: {
-          start: baseOffset + foundAtIndex,
-          end: baseOffset + foundAtIndex + safe.original.length
-        }
+          start: baseOffset + best.start,
+          end: baseOffset + best.end
+        },
+        matchMethod: best.method
       });
-      searchFromIndex = foundAtIndex + safe.original.length;
+      searchFromIndex = best.end;
     } else {
-      unmatched.push(safe);
+      const reason = mismatchContext ? describeMismatch(text, safe.original, mismatchContext) : '';
+      unmatched.push(reason ? { ...safe, reason } : safe);
       console.warn(`Could not map correction: "${safe.original}"`);
     }
   }
@@ -7269,8 +7756,7 @@ async function handleReviewEdits(run) {
     summaryContent.appendChild(applyBtn);
 
     centerSummaryModal();
-    summaryModal.classList.add('visible');
-    modalOverlay.classList.add('visible');
+    openModalPair(summaryModal, modalOverlay);
 
     if (modalTitle) {
       const restoreTitle = () => {
@@ -7341,8 +7827,7 @@ async function handleCustomAsk() {
     }
     centerSummaryModal();
     summaryContent.innerHTML = html || '<p>No response.</p>';
-    summaryModal.classList.add('visible');
-    modalOverlay.classList.add('visible');
+    openModalPair(summaryModal, modalOverlay);
 
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -7433,13 +7918,11 @@ function findApproxMatchWhole(haystack, needle, maxDist = FUZZY_MATCH_MAX_DIST) 
 
 // Modal functions
 function openImportChoice() {
-  if (importChoiceModal) importChoiceModal.classList.add('visible');
-  if (importChoiceOverlay) importChoiceOverlay.classList.add('visible');
+  openModalPair(importChoiceModal, importChoiceOverlay);
 }
 
 function closeImportChoice() {
-  if (importChoiceModal) importChoiceModal.classList.remove('visible');
-  if (importChoiceOverlay) importChoiceOverlay.classList.remove('visible');
+  closeModalPair(importChoiceModal, importChoiceOverlay);
 }
 
 function openCustomPromptModal() {
@@ -7479,13 +7962,11 @@ function openCustomPromptModal() {
       : ' | Supporting files: none';
     customModelInfo.textContent = `Model: ${getSelectedModelLabel()} | Language: ${langText || 'n/a'}${formatLabel}${supportLabel}`;
   }
-  customPromptModal.classList.add('visible');
-  customPromptOverlay.classList.add('visible');
+  openModalPair(customPromptModal, customPromptOverlay);
 }
 
 function closeCustomPromptModal() {
-  customPromptModal.classList.remove('visible');
-  customPromptOverlay.classList.remove('visible');
+  closeModalPair(customPromptModal, customPromptOverlay);
 }
 
 function resetCustomPromptModal() {
@@ -7599,20 +8080,17 @@ function getSelectedModelLabel() {
 
 function openJsonModal() {
   if (jsonInput) jsonInput.value = '';
-  if (jsonModal) jsonModal.classList.add('visible');
-  if (jsonOverlay) jsonOverlay.classList.add('visible');
+  openModalPair(jsonModal, jsonOverlay);
   if (jsonInput) jsonInput.focus();
 }
 
 function closeJsonModal() {
-  if (jsonModal) jsonModal.classList.remove('visible');
-  if (jsonOverlay) jsonOverlay.classList.remove('visible');
+  closeModalPair(jsonModal, jsonOverlay);
 }
 
 function openCommentsModal() {
   if (commentsInput) commentsInput.value = '';
-  if (commentsModal) commentsModal.classList.add('visible');
-  if (commentsOverlay) commentsOverlay.classList.add('visible');
+  openModalPair(commentsModal, commentsOverlay);
   const isRefineMode = commentsImportMode === 'refine';
   if (commentsTitleText) {
     commentsTitleText.textContent = isRefineMode ? 'Import refine.ink comments' : 'Import Comments';
@@ -7637,8 +8115,7 @@ function openCommentsModal() {
 }
 
 function closeCommentsModal() {
-  if (commentsModal) commentsModal.classList.remove('visible');
-  if (commentsOverlay) commentsOverlay.classList.remove('visible');
+  closeModalPair(commentsModal, commentsOverlay);
 }
 
 function normalizeDeepAuditChoice(value, options, fallback) {
@@ -7742,14 +8219,12 @@ async function openDeepAuditPromptModal() {
     deepAuditPromptInput.value = result.text || '';
   }
   updateDeepAuditPromptSourceLabel(result.source);
-  deepAuditPromptModal.classList.add('visible');
-  deepAuditPromptOverlay.classList.add('visible');
+  openModalPair(deepAuditPromptModal, deepAuditPromptOverlay);
   if (deepAuditPromptInput) deepAuditPromptInput.focus();
 }
 
 function closeDeepAuditPromptModal() {
-  if (deepAuditPromptModal) deepAuditPromptModal.classList.remove('visible');
-  if (deepAuditPromptOverlay) deepAuditPromptOverlay.classList.remove('visible');
+  closeModalPair(deepAuditPromptModal, deepAuditPromptOverlay);
 }
 
 async function handleDeepAuditPromptReload() {
@@ -7791,14 +8266,12 @@ function openDeepAuditModal() {
   if (deepAuditTargetInput && !deepAuditTargetInput.value.trim() && selectionMode && selectedText) {
     deepAuditTargetInput.value = selectedText.trim();
   }
-  deepAuditModal.classList.add('visible');
-  deepAuditOverlay.classList.add('visible');
+  openModalPair(deepAuditModal, deepAuditOverlay);
   if (deepAuditTargetInput) deepAuditTargetInput.focus();
 }
 
 function closeDeepAuditModal() {
-  if (deepAuditModal) deepAuditModal.classList.remove('visible');
-  if (deepAuditOverlay) deepAuditOverlay.classList.remove('visible');
+  closeModalPair(deepAuditModal, deepAuditOverlay);
 }
 
 function showDeepAuditReportModal() {
@@ -7819,13 +8292,11 @@ function showDeepAuditReportModal() {
   if (deepAuditReportExportBtn) {
     deepAuditReportExportBtn.disabled = false;
   }
-  deepAuditReportModal.classList.add('visible');
-  deepAuditReportOverlay.classList.add('visible');
+  openModalPair(deepAuditReportModal, deepAuditReportOverlay);
 }
 
 function closeDeepAuditReportModal() {
-  if (deepAuditReportModal) deepAuditReportModal.classList.remove('visible');
-  if (deepAuditReportOverlay) deepAuditReportOverlay.classList.remove('visible');
+  closeModalPair(deepAuditReportModal, deepAuditReportOverlay);
 }
 
 function buildDeepAuditModelLabel(familyKey, reasoningKey) {
@@ -8164,13 +8635,11 @@ function showLastRunModal() {
     });
   }
  
-  lastRunModal.classList.add('visible');
-  lastRunOverlay.classList.add('visible');
+  openModalPair(lastRunModal, lastRunOverlay);
 }
 
 function hideLastRunModal() {
-  lastRunModal.classList.remove('visible');
-  lastRunOverlay.classList.remove('visible');
+  closeModalPair(lastRunModal, lastRunOverlay);
 }
 
 function showGlobalDiffModal() {
@@ -8244,8 +8713,7 @@ function showGlobalDiffModal() {
       diffContent.appendChild(nothing);
     }
   }
-  if (diffModal) diffModal.classList.add('visible');
-  if (diffOverlay) diffOverlay.classList.add('visible');
+  openModalPair(diffModal, diffOverlay);
 }
 
 // Open a simple standalone diff window (placeholder content for now)
@@ -8276,43 +8744,36 @@ function showGlobalDiffInNewWindow() {
 }
 
 function hideDiffModal() {
-  if (diffModal) diffModal.classList.remove('visible');
-  if (diffOverlay) diffOverlay.classList.remove('visible');
+  closeModalPair(diffModal, diffOverlay);
 }
 
 function showAboutModal() {
-  aboutModal.classList.add('visible');
-  aboutOverlay.classList.add('visible');
+  openModalPair(aboutModal, aboutOverlay);
 }
 
 function closeAboutModal() {
-  aboutModal.classList.remove('visible');
-  aboutOverlay.classList.remove('visible');
+  closeModalPair(aboutModal, aboutOverlay);
 }
 
 function showFileModal() {
-  fileModal.classList.add('visible');
-  fileOverlay.classList.add('visible');
+  openModalPair(fileModal, fileOverlay);
 }
 
 function closeFileModal() {
-  fileModal.classList.remove('visible');
-  fileOverlay.classList.remove('visible');
+  closeModalPair(fileModal, fileOverlay);
   dropZone.classList.remove('dragging');
 }
 
 function showSupportingFilesModal() {
   if (!supportFilesModal || !supportFilesOverlay) return;
-  supportFilesModal.classList.add('visible');
-  supportFilesOverlay.classList.add('visible');
+  openModalPair(supportFilesModal, supportFilesOverlay);
   updateSupportingFileIdUI();
   renderSupportingFilesList();
 }
 
 function closeSupportingFilesModal() {
   if (!supportFilesModal || !supportFilesOverlay) return;
-  supportFilesModal.classList.remove('visible');
-  supportFilesOverlay.classList.remove('visible');
+  closeModalPair(supportFilesModal, supportFilesOverlay);
   if (supportFilesDropZone) supportFilesDropZone.classList.remove('dragging');
 }
 
@@ -9040,28 +9501,24 @@ function buildSupportingConfirmHtml(details) {
   const settingsLine = getCurrentSettingsSummary({ family: familyKey, model: modelLabel });
   const summary = getSupportingFilesSummary();
   const totalSize = formatBytes(summary.totalBytes);
-  const allowChunkChoice = !allowSupportingFiles && (reason === 'chunking' || reason === 'parallel' || reason === 'chunking+parallel');
+  const allowChunkChoice = reason === 'chunking' || reason === 'parallel' || reason === 'chunking+parallel';
   const tokenEstimate = allowChunkChoice
     ? estimateSupportingPromptTokens(details && details.analysisTextLength)
     : null;
 
-  let statusLine = 'Supporting files will be sent with this run.';
+  let statusLine = allowSupportingFiles
+    ? 'Supporting files will be sent with this run.'
+    : 'Supporting files will NOT be sent for this run.';
   let choiceLine = '';
-  if (!allowSupportingFiles) {
-    if (reason === 'chunking+parallel') {
-      statusLine = 'Supporting files will NOT be sent because chunking and parallel processing are active.';
-      choiceLine = 'Choose "Run single chunk" to send files in one call (usually lower cost), or proceed with chunking to skip files and make multiple calls.';
-    } else if (reason === 'parallel') {
-      statusLine = 'Supporting files will NOT be sent because parallel processing is active.';
-      choiceLine = 'Choose "Run single chunk" to send files in one call (usually lower cost), or proceed with chunking to skip files and make multiple calls.';
-    } else if (reason === 'chunking') {
-      statusLine = 'Supporting files will NOT be sent because chunking is active.';
-      choiceLine = 'Choose "Run single chunk" to send files in one call (usually lower cost), or proceed with chunking to skip files and make multiple calls.';
-    } else if (reason === 'provider') {
-      statusLine = 'Supporting files will NOT be sent for this provider.';
-    } else {
-      statusLine = 'Supporting files will NOT be sent for this run.';
-    }
+  if (!allowSupportingFiles && reason === 'provider') {
+    statusLine = 'Supporting files will NOT be sent for this provider.';
+  }
+  if (allowSupportingFiles && allowChunkChoice) {
+    statusLine = 'Warning: chunking/parallel is active; files will be attached to each chunk (slower/costlier).';
+    choiceLine = 'Choose "Run single chunk" to send everything in one call, or continue with chunking/parallel and keep files attached.';
+  } else if (!allowSupportingFiles && allowChunkChoice) {
+    statusLine = 'Supporting files are currently skipped because chunking/parallel is active.';
+    choiceLine = 'Choose "Run single chunk" to send files in one call (usually slower), or proceed with chunking to skip files and make multiple calls.';
   }
 
   const filesList = supportingFiles.map((file) => {
@@ -9100,15 +9557,15 @@ function showSupportingConfirm(details) {
     return Promise.resolve('cancel');
   }
   supportingConfirmBody.innerHTML = buildSupportingConfirmHtml(details);
-  const allowChunkChoice = !details.allowSupportingFiles && (details.reason === 'chunking' || details.reason === 'parallel' || details.reason === 'chunking+parallel');
+  const allowChunkChoice = details.reason === 'chunking' || details.reason === 'parallel' || details.reason === 'chunking+parallel';
   if (supportingConfirmNoChunk) {
     supportingConfirmNoChunk.style.display = allowChunkChoice ? 'inline-flex' : 'none';
   }
   if (supportingConfirmAccept) {
-    supportingConfirmAccept.textContent = allowChunkChoice ? 'Proceed with chunking' : 'Continue';
+    supportingConfirmAccept.textContent = allowChunkChoice ? 'Continue with chunking/parallel' : 'Continue';
   }
   supportingConfirmModal.classList.add('visible');
-  supportingConfirmOverlay.classList.add('visible');
+  showLayer(supportingConfirmOverlay);
   return new Promise((resolve) => {
     supportingConfirmResolver = resolve;
   });
@@ -9116,7 +9573,7 @@ function showSupportingConfirm(details) {
 
 function closeSupportingConfirm(result) {
   if (supportingConfirmModal) supportingConfirmModal.classList.remove('visible');
-  if (supportingConfirmOverlay) supportingConfirmOverlay.classList.remove('visible');
+  hideLayer(supportingConfirmOverlay);
   if (supportingConfirmBody) supportingConfirmBody.innerHTML = '';
   if (supportingConfirmNoChunk) supportingConfirmNoChunk.style.display = 'none';
   if (supportingConfirmAccept) supportingConfirmAccept.textContent = 'Continue';
@@ -9143,7 +9600,15 @@ function buildSupportingToastMessage(details) {
             : 'attachments disabled';
     return `Supporting files skipped (${reason}).`;
   }
-  return `Supporting files attached (${fileLabel}${sizeLabel ? `, ${sizeLabel}` : ''}).`;
+  const warning =
+    details.reason === 'chunking+parallel'
+      ? ' (warning: chunking+parallel active)'
+      : details.reason === 'parallel'
+        ? ' (warning: parallel active)'
+        : details.reason === 'chunking'
+          ? ' (warning: chunking active)'
+          : '';
+  return `Supporting files attached (${fileLabel}${sizeLabel ? `, ${sizeLabel}` : ''})${warning}.`;
 }
 
 function showSupportingToast(message) {
@@ -9161,7 +9626,7 @@ async function confirmSupportingFilesBeforeRun(details) {
   if (!supportingFiles.length) return { ok: true, forceSingleChunk: false };
   const result = await showSupportingConfirm(details);
   if (result === 'no-chunk') {
-    showSupportingToast('Chunking disabled for this run; supporting files will be sent.');
+    showSupportingToast('Chunking disabled for this run; supporting files will be sent (single call).');
     return { ok: true, forceSingleChunk: true };
   }
   if (result === 'continue' || result === true) {
