@@ -5032,10 +5032,16 @@ async function handleAnalysis() {
     alert('Please enter some text to analyze.');
     return;
   }
-  
-  const selectedRule = window.WRITING_RULES[ruleSelect.value];
+
+  const fallbackRuleKey = 'grammar';
+  const ruleKey = (ruleSelect && ruleSelect.value) || '';
+  const selectedRule = (window.WRITING_RULES && window.WRITING_RULES[ruleKey])
+    || (window.WRITING_RULES && window.WRITING_RULES[fallbackRuleKey]);
+  if (selectedRule && ruleSelect && !window.WRITING_RULES[ruleKey]) {
+    ruleSelect.value = fallbackRuleKey;
+  }
   if (!selectedRule) {
-    alert('Please select a rule.');
+    alert('Rules failed to load. Please reload the page.');
     return;
   }
   if ((!originalDocumentText || originalDocumentText === DEFAULT_SAMPLE_TEXT || originalDocumentText === DEFAULT_SAMPLE_TEXT_TRIMMED) && currentText.trim()) {
@@ -6480,6 +6486,62 @@ function findNormalizedMatch(textIndex, original, searchFromIndex, options = {})
   return { start: rawStart, end: rawEnd, matchedText, usedNormalization: true };
 }
 
+function findLetterOnlyMatch(letterIndex, original, searchFromIndex = 0, similarityThreshold = 0.9) {
+  if (!letterIndex || typeof letterIndex.stripped !== 'string') return null;
+  const strippedOriginal = stripLettersAndDigits(original);
+  const targetLen = strippedOriginal.length;
+  if (!targetLen) return null;
+  const maxSearchDist = Math.max(1, Math.ceil(targetLen * (1 - similarityThreshold)));
+  const startIdx = findNormalizedStartIndex(letterIndex.spanStart, searchFromIndex);
+  const haystack = letterIndex.stripped;
+  const hayStart = Math.min(startIdx, haystack.length);
+  let best = null;
+
+  const considerMatch = (offset, dist) => {
+    if (dist > maxSearchDist) return;
+    if (!best || dist < best.dist || (dist === best.dist && offset < best.offset)) {
+      best = { offset, dist };
+    }
+  };
+
+  const exactAt = haystack.indexOf(strippedOriginal, hayStart);
+  if (exactAt !== -1) {
+    considerMatch(exactAt, 0);
+  }
+
+  const searchApprox = (baseOffset, hay) => {
+    const found = findApproxMatchWhole(hay, strippedOriginal, maxSearchDist);
+    if (found !== -1) {
+      const offset = baseOffset + found;
+      const snippet = haystack.substr(offset, targetLen);
+      const dist = boundedLevenshtein(snippet, strippedOriginal, maxSearchDist);
+      considerMatch(offset, dist);
+    }
+  };
+
+  if (!best) {
+    searchApprox(hayStart, haystack.slice(hayStart));
+  }
+  if (!best && hayStart > 0) {
+    searchApprox(0, haystack);
+  }
+
+  if (!best) return null;
+  const similarity = targetLen ? 1 - best.dist / targetLen : 0;
+  if (similarity < similarityThreshold) return null;
+  const endIdx = best.offset + targetLen - 1;
+  if (endIdx < 0 || endIdx >= letterIndex.spanEnd.length) return null;
+  const rawStart = letterIndex.spanStart[best.offset];
+  const rawEnd = letterIndex.spanEnd[endIdx] + 1;
+  return {
+    start: rawStart,
+    end: rawEnd,
+    matchedText: letterIndex.raw.substring(rawStart, rawEnd),
+    similarity,
+    dist: best.dist
+  };
+}
+
 function describeMismatch(text, safeOriginal, options = {}) {
   const hints = [];
   const normalization = options.normalization || {};
@@ -7059,6 +7121,48 @@ function collapseBackslashesOnce(str) {
   return typeof str === 'string' ? str.replace(/\\{2,}/g, '\\') : str;
 }
 
+function stripWhitespace(str) {
+  return typeof str === 'string' ? str.replace(/\s+/g, '') : '';
+}
+
+function stripLettersAndDigits(str) {
+  return typeof str === 'string' ? str.replace(/[^A-Za-z0-9]/g, '').toLowerCase() : '';
+}
+
+function buildWhitespaceIndex(text) {
+  if (typeof text !== 'string') return null;
+  const spanStart = [];
+  const spanEnd = [];
+  const stripped = [];
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (/\s/.test(ch)) continue;
+    spanStart.push(i);
+    spanEnd.push(i);
+    stripped.push(ch);
+  }
+
+  return { stripped: stripped.join(''), spanStart, spanEnd, raw: text };
+}
+
+function buildLetterIndex(text) {
+  if (typeof text !== 'string') return null;
+  const spanStart = [];
+  const spanEnd = [];
+  const stripped = [];
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!/[A-Za-z0-9]/.test(ch)) continue;
+    spanStart.push(i);
+    spanEnd.push(i);
+    stripped.push(ch.toLowerCase());
+  }
+
+  return { stripped: stripped.join(''), spanStart, spanEnd, raw: text };
+}
+
 function findAllIndices(haystack, needle) {
   const hits = [];
   if (!haystack || !needle) return hits;
@@ -7081,6 +7185,8 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
   const normalization = options.normalization || {};
   const useNormalization = hasNormalizationOptions(normalization);
   const normalizedIndex = useNormalization ? buildNormalizedIndex(text, normalization) : null;
+  const whitespaceIndex = buildWhitespaceIndex(text);
+  const letterIndex = buildLetterIndex(text);
   const explainMismatches = !!options.explainMismatches;
   const mismatchContext = explainMismatches
     ? {
@@ -7102,14 +7208,23 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
     const candidates = [];
     const candidateKeys = new Set();
     const editCap = Math.max(FUZZY_MATCH_MAX_DIST, Math.ceil(Math.min(safe.original.length, 200) * 0.3));
-    const methodRank = { exact: 0, normalized: 1, 'backslash-normalized': 2, fuzzy: 3 };
+    const methodRank = {
+      exact: 0,
+      normalized: 1,
+      'whitespace-normalized': 2,
+      'backslash-normalized': 3,
+      fuzzy: 4,
+      loosened: 5
+    };
 
-    const addCandidate = (start, end, method, mappedOriginal) => {
+    const addCandidate = (start, end, method, mappedOriginal, editDistOverride = null) => {
       if (start < 0 || end < 0 || end > text.length || start >= end) return;
       const key = `${start}:${end}`;
       if (candidateKeys.has(key)) return;
       candidateKeys.add(key);
-      const editDist = boundedLevenshtein(mappedOriginal, safe.original, editCap);
+      const editDist = Number.isFinite(editDistOverride)
+        ? editDistOverride
+        : boundedLevenshtein(mappedOriginal, safe.original, editCap);
       candidates.push({ start, end, method, mappedOriginal, editDist });
     };
 
@@ -7136,6 +7251,26 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
             addCandidate(rawStart, rawEnd, 'normalized', text.substring(rawStart, rawEnd));
           }
           foundAt = normalizedIndex.normalized.indexOf(normalizedOriginal, foundAt + 1);
+        }
+      }
+    }
+
+    // Whitespace-normalized matches (strip all whitespace, map back to raw spans)
+    if (whitespaceIndex) {
+      const strippedOriginal = stripWhitespace(safe.original);
+      if (strippedOriginal) {
+        const startNorm = findNormalizedStartIndex(whitespaceIndex.spanStart, searchFromIndex);
+        let foundAt = whitespaceIndex.stripped.indexOf(strippedOriginal, startNorm);
+        while (foundAt !== -1) {
+          const endIdx = foundAt + strippedOriginal.length - 1;
+          if (endIdx >= 0 && endIdx < whitespaceIndex.spanEnd.length) {
+            const rawStart = whitespaceIndex.spanStart[foundAt];
+            const rawEnd = whitespaceIndex.spanEnd[endIdx] + 1;
+            const matchedText = text.substring(rawStart, rawEnd);
+            const editDist = boundedLevenshtein(stripWhitespace(matchedText), strippedOriginal, editCap);
+            addCandidate(rawStart, rawEnd, 'whitespace-normalized', matchedText, editDist);
+          }
+          foundAt = whitespaceIndex.stripped.indexOf(strippedOriginal, foundAt + 1);
         }
       }
     }
@@ -7189,6 +7324,31 @@ function mapCorrectionsToPositions(correctionsArray, text, baseOffset = 0, optio
         matchMethod: best.method
       });
       searchFromIndex = best.end;
+      continue;
+    }
+
+    let letterMatch = null;
+    if (letterIndex) {
+      letterMatch = findLetterOnlyMatch(letterIndex, safe.original, searchFromIndex);
+    }
+    if (letterMatch) {
+      const warningPrefix = 'warning: possible mismatch - ';
+      const existing = safe.explanation || '';
+      const lowerExisting = existing.toLowerCase();
+      const explanation = lowerExisting.startsWith('warning: possible mismatch')
+        ? existing
+        : `${warningPrefix}${existing || 'anchored via letter-only fallback; please verify.'}`;
+      mapped.push({
+        ...safe,
+        explanation,
+        original: letterMatch.matchedText,
+        position: {
+          start: baseOffset + letterMatch.start,
+          end: baseOffset + letterMatch.end
+        },
+        matchMethod: 'letter-only'
+      });
+      searchFromIndex = letterMatch.end;
     } else {
       const reason = mismatchContext ? describeMismatch(text, safe.original, mismatchContext) : '';
       unmatched.push(reason ? { ...safe, reason } : safe);
@@ -7316,26 +7476,72 @@ function mapCorrectionsStably(correctionsArray, text, baseOffset = 0, options = 
     ? options.maxFuzzyTextLength
     : FUZZY_MATCH_MAX_TEXT;
   const allowFuzzyWhole = allowFuzzy && text.length <= maxFuzzyTextLength;
+  const whitespaceIndex = buildWhitespaceIndex(text);
+  const letterIndex = buildLetterIndex(text);
 
   correctionsArray.forEach((corr) => {
     const safe = normalizeCorrectionFields(corr);
     if (!safe) return;
-    let pos = text.indexOf(safe.original);
-    let usedFuzzy = false;
-    if (pos === -1 && allowFuzzyWhole) {
-      pos = findApproxMatchWhole(text, safe.original, maxDist);
-      usedFuzzy = pos !== -1;
+    let span = null;
+    let mappedOriginal = safe.original;
+    let matchMethod = 'exact';
+
+    const exactPos = text.indexOf(safe.original);
+    if (exactPos !== -1) {
+      span = { start: exactPos, end: exactPos + safe.original.length };
     }
-    if (pos !== -1) {
-      const snippet = text.substring(pos, pos + safe.original.length);
-      const mappedOriginal = usedFuzzy ? snippet : safe.original;
+
+    if (!span && whitespaceIndex) {
+      const strippedOriginal = stripWhitespace(safe.original);
+      if (strippedOriginal) {
+        const foundAt = whitespaceIndex.stripped.indexOf(strippedOriginal);
+        if (foundAt !== -1) {
+          const endIdx = foundAt + strippedOriginal.length - 1;
+          if (endIdx >= 0 && endIdx < whitespaceIndex.spanEnd.length) {
+            const rawStart = whitespaceIndex.spanStart[foundAt];
+            const rawEnd = whitespaceIndex.spanEnd[endIdx] + 1;
+            span = { start: rawStart, end: rawEnd };
+            mappedOriginal = text.substring(rawStart, rawEnd);
+            matchMethod = 'whitespace-normalized';
+          }
+        }
+      }
+    }
+
+    if (!span && allowFuzzyWhole) {
+      const fuzzyAt = findApproxMatchWhole(text, safe.original, maxDist);
+      if (fuzzyAt !== -1) {
+        span = { start: fuzzyAt, end: fuzzyAt + safe.original.length };
+        mappedOriginal = text.substring(fuzzyAt, fuzzyAt + safe.original.length);
+        matchMethod = 'fuzzy';
+      }
+    }
+
+    if (!span && letterIndex) {
+      const letterMatch = findLetterOnlyMatch(letterIndex, safe.original, 0);
+      if (letterMatch) {
+        span = { start: letterMatch.start, end: letterMatch.end };
+        mappedOriginal = letterMatch.matchedText;
+        matchMethod = 'letter-only';
+      }
+    }
+
+    if (span) {
+      const warningPrefix = 'warning: possible mismatch - ';
+      const explanation = matchMethod === 'letter-only'
+        ? (safe.explanation && safe.explanation.toLowerCase().startsWith('warning: possible mismatch')
+          ? safe.explanation
+          : `${warningPrefix}${safe.explanation || 'anchored via letter-only fallback; please verify.'}`)
+        : safe.explanation;
       mapped.push({
         ...safe,
+        explanation,
         original: mappedOriginal,
         position: {
-          start: baseOffset + pos,
-          end: baseOffset + pos + safe.original.length
-        }
+          start: baseOffset + span.start,
+          end: baseOffset + span.end
+        },
+        matchMethod
       });
     } else {
       unmatched.push(safe);
