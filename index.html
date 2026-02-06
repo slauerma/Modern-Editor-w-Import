@@ -511,23 +511,7 @@ body {
   padding-bottom: 80px;
 }
 
-/* Responsive: ensure content doesn't overlap on narrow viewports */
-@media (max-width: 600px) {
-  .main-content {
-    padding-left: 110px;
-  }
-  
-  .header {
-    padding: 8px;
-  }
-  
-  .hamburger-btn,
-  .icon-btn,
-  .nav-btn {
-    width: 36px;
-    height: 36px;
-  }
-}
+/* Responsive rules are defined near the end of the stylesheet so they win cascade. */
 
 
 .header-actions {
@@ -1927,6 +1911,128 @@ body {
 .credit-link:hover {
   text-decoration: underline;
 }
+
+/* Final responsive overrides: keep near end so these rules win cascade. */
+@media (max-width: 600px) {
+  .main-content {
+    padding: 1rem;
+    padding-left: 126px;
+    padding-bottom: 190px;
+  }
+
+  .header {
+    top: 0.75rem;
+    width: 116px;
+    height: calc(100vh - 1rem);
+    padding: 6px;
+  }
+
+  .header-scroll {
+    gap: 6px;
+  }
+
+  .header-actions {
+    gap: 4px;
+  }
+
+  .hamburger-btn,
+  .icon-btn,
+  .nav-btn {
+    width: 32px;
+    height: 32px;
+    padding: 4px;
+    font-size: 1.1rem;
+  }
+
+  .model-summary-btn {
+    min-width: 0;
+    max-width: 100%;
+    padding: 5px 6px;
+    font-size: 0.75rem;
+  }
+
+  .analysis-controls {
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+
+  .analyze-btn {
+    font-size: 0.76rem;
+    line-height: 1.2;
+    padding: 7px 6px;
+    white-space: normal;
+  }
+
+  .status-bar {
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 0.72rem;
+  }
+
+  #apiStatusText,
+  #saveStatusText {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-actions {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+
+  .status-secondary-btn,
+  .status-manage-btn {
+    padding: 3px 6px;
+    font-size: 0.67rem;
+  }
+
+  .editor-textarea,
+  .highlight-overlay {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 420px) {
+  .main-content {
+    padding-left: 122px;
+    padding-right: 0.75rem;
+  }
+
+  .status-secondary-btn {
+    display: none !important;
+  }
+
+  .status-manage-btn {
+    padding: 3px 5px;
+    font-size: 0.65rem;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 760px) {
+  .header {
+    top: 1rem;
+    width: 132px;
+    height: calc(100vh - 1.5rem);
+    padding: 10px;
+  }
+
+  .main-content {
+    padding-left: 154px;
+    padding-right: 1rem;
+  }
+
+  .model-summary-btn {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 0.8rem;
+    padding: 6px 8px;
+  }
+}
 </style>
 </head>
 <body>
@@ -2028,6 +2134,7 @@ body {
     <hr class="menu-divider">
     <button class="menu-item" id="supportFilesBtn">Upload supporting files</button>
     <button class="menu-item" id="lastRunLogBtn">Show Last Prompt/Response</button>
+    <button class="menu-item" id="fullRunLogBtn">Last 20 (full request log)</button>
     <button class="menu-item" id="runHistoryBtn">Run history: Temporary</button>
     <button class="menu-item" id="deepAuditReportBtn">Deep Audit Report</button>
     <button class="menu-item" id="manageKeysBtn">API keys / status…</button>
